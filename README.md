@@ -1,5 +1,9 @@
 # Whiskerfield
 
+▶ **Play now:** https://cid0980.github.io/Whiskerfield/
+
+Installable PWA — open the link once, tap **Install game**, then play offline.
+
 **Small paws. Endless possibilities.**
 
 A peaceful, installable, offline-first 3D cat adventure with fluid quadruped movement, a naturalistic town palette, and a mobile-friendly controller. Wander a procedurally generated town, climb almost any wall, hop across rooftops, find quiet gardens, and take a catnap whenever you like. No timers, combat, accounts, or network calls during play.

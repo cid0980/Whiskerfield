@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 
 export const CHUNK = 72;
+// Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
+export const NAV = Object.freeze({ offsets: [0, 28.45, 43.55], pavement: [28.45, 43.55] });
 const TAU = Math.PI * 2;
 const Y = new THREE.Vector3(0, 1, 0);
 const tempMatrix = new THREE.Matrix4();
@@ -33,7 +35,7 @@ const softSphereGeo = new THREE.IcosahedronGeometry(1, 1);
 const potGeo = new THREE.CylinderGeometry(1, .72, 1, 9);
 const torusGeo = new THREE.TorusGeometry(1, .12, 5, 16);
 
-class Batch {
+export class Batch {
   constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.count = 0; }
   add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0) {
     tempPosition.set(x, y, z); tempScale.set(sx, sy, sz);
@@ -84,7 +86,7 @@ export function districtName(cx, cz, seed) { const h = hash(Math.floor(cx / 2), 
 export class World {
   constructor(scene, seedText) {
     this.scene = scene; this.seedText = seedText; this.seed = hashString(seedText);
-    this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = [];
+    this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.spatial = new Map();
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .98, metalness: 0, flatShading: true });
     this.center = ''; this.radius = 2; this.pending = [];
   }
@@ -113,6 +115,14 @@ export class World {
   refreshColliders() {
     this.colliders = []; this.buildings = []; this.parks = []; this.water = [];
     for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); }
+    // 8 m spatial hash so physics, NPCs, and the camera only touch nearby solids.
+    const index = new Map();
+    for (const s of this.colliders) {
+      for (let ix = Math.floor(s.minX / 8); ix <= Math.floor(s.maxX / 8); ix++) for (let iz = Math.floor(s.minZ / 8); iz <= Math.floor(s.maxZ / 8); iz++) {
+        const k = ix + ',' + iz; let cell = index.get(k); if (!cell) index.set(k, cell = []); cell.push(s);
+      }
+    }
+    this.spatial = index;
   }
 
   removeChunk(key) {
@@ -123,7 +133,15 @@ export class World {
   dispose() { for (const key of this.chunks.keys()) this.removeChunk(key); this.material.dispose(); }
 
   solid(c, x, y, z, w, h, d, options = {}) {
-    const s = { minX: x - w / 2, maxX: x + w / 2, minY: y - h / 2, maxY: y + h / 2, minZ: z - d / 2, maxZ: z + d / 2, climbable: true, ...options };
+    const s = { shape: 'box', minX: x - w / 2, maxX: x + w / 2, minY: y - h / 2, maxY: y + h / 2, minZ: z - d / 2, maxZ: z + d / 2, climbable: true, ...options };
+    c.colliders.push(s); return s;
+  }
+  cylinderSolid(c, x, y, z, r, h, options = {}) {
+    const s = { shape: 'cylinder', x, z, r, minX: x - r, maxX: x + r, minY: y, maxY: y + h, minZ: z - r, maxZ: z + r, climbable: false, ...options };
+    c.colliders.push(s); return s;
+  }
+  ellipsoidSolid(c, x, y, z, rx, ry, rz, options = {}) {
+    const s = { shape: 'ellipsoid', x, y, z, rx, ry, rz, minX: x - rx, maxX: x + rx, minY: y - ry, maxY: y + ry, minZ: z - rz, maxZ: z + rz, climbable: true, ...options };
     c.colliders.push(s); return s;
   }
 
@@ -142,9 +160,11 @@ export class World {
         c.batch.box(ox + s * 32.5 + edge * 4.05, .055, oz, 1.05, .15, CHUNK - 9, pavement);
         c.batch.box(ox, .056, oz + s * 32.5 + edge * 4.05, CHUNK - 9, .15, 1.05, pavement);
       }
-      c.batch.box(ox + s * 15, .015, oz, 3.3, .07, 58, '#b3a88f');
-      c.batch.box(ox, .016, oz + s * 15, 58, .07, 3.3, '#b3a88f');
     }
+    // A footpath crosses the middle of every block, linking the pavements.
+    c.batch.box(ox, .015, oz, 3, .07, 58, '#b3a88f');
+    c.batch.box(ox, .016, oz, 58, .07, 3, '#b3a88f');
+    this.cars(c, rng);
     // A few sun-bleached cobbles, rather than a repeating road texture.
     for (let i = 0; i < 100; i++) {
       const along = rng() * 68 - 34, across = (rng() - .5) * 5.4;
@@ -162,10 +182,10 @@ export class World {
     }
     // Street trees, lanterns, and small places to pause.
     for (const s of [-1, 1]) {
-      this.tree(c, ox + s * 27.5, oz + 5, rng, .65);
-      this.tree(c, ox - 7, oz + s * 27.5, rng, .65);
-      this.lamp(c, ox + s * 28, oz - 27.5);
-      if (rng() > .35) this.bench(c, ox + s * 27.7, oz + 14, s * Math.PI / 2);
+      this.tree(c, ox + s * 27.4, oz + 5, rng, .65);
+      this.tree(c, ox - 7, oz + s * 27.4, rng, .65);
+      this.lamp(c, ox + s * 27.2, oz - 27.2);
+      if (rng() > .35) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
     }
     if (cx === 0 && cz === 0) {
       this.makeSpawn(c, rng);
@@ -192,8 +212,9 @@ export class World {
     const roofRise = roofType === 0 ? 2.4 + r() * 2 : roofType === 1 ? 2.5 + r() * 1.7 : 0;
     const building = { id, x, z, w, d, h, roofType, roofRise, ridgeX, wall, roofColor, cx: c.cx, cz: c.cz, kind: 'roof' };
     c.buildings.push(building);
-    const body = this.solid(c, x, h / 2, z, w, h, d, { buildingId: id, building });
+    const body = this.solid(c, x, h / 2, z, w, h, d, { buildingId: id, building, kind: 'wall' });
     building.body = body;
+    if (roofType < 2) c.colliders.push({ shape: 'roof', building, kind: 'roof', climbable: false, minX: x - w / 2 - .55, maxX: x + w / 2 + .55, minY: h, maxY: h + roofRise, minZ: z - d / 2 - .55, maxZ: z + d / 2 + .55 });
     b.box(x, .18, z, w + .35, .45, d + .35, '#b8b6a0');
     b.box(x, h / 2, z, w, h, d, wall);
     b.box(x, h - .12, z, w + .38, .25, d + .38, '#e8dfc4');
@@ -223,6 +244,7 @@ export class World {
         b.box(wx + nx * .15, wy, wz + nz * .15, .065, wh, .06, trim, angle);
         b.box(wx + nx * .15, wy + .05, wz + nz * .15, ww, .065, .06, trim, angle);
         b.box(wx + nx * .13, wy - wh / 2 - .1, wz + nz * .13, ww + .42, .16, .37, '#ded5bb', angle);
+        this.solid(c, wx + nx * .13, wy - wh / 2 - .1, wz + nz * .13, side % 2 ? .37 : ww + .42, .16, side % 2 ? ww + .42 : .37, { climbable: false, kind: 'sill' });
         if (r() > .38) for (const sign of [-1, 1]) {
           b.box(wx + tx * sign * (ww / 2 + .3), wy, wz + tz * sign * (ww / 2 + .3), .39, wh + .1, .12, shutter, angle);
           for (let sl = 0; sl < 4; sl++) b.box(wx + tx * sign * (ww / 2 + .3) + nx * .075, wy - .5 + sl * .32, wz + tz * sign * (ww / 2 + .3) + nz * .075, .32, .045, .045, '#a5ad91', angle);
@@ -255,6 +277,7 @@ export class World {
           b.add(boxGeo, dx + tx * u + nx * .65, 2.85, dz + tz * u + nz * .65, .38, .1, 1.65, s % 2 ? '#eee4c8' : stripe, .17, a);
           b.box(dx + tx * u + nx * 1.43, 2.62, dz + tz * u + nz * 1.43, .38, .28, .1, s % 2 ? '#eee4c8' : stripe, a);
         }
+        this.solid(c, dx + nx * .7, 2.88, dz + nz * .7, doorSide % 2 ? 1.5 : 3.04, .1, doorSide % 2 ? 3.04 : 1.5, { climbable: false, kind: 'awning' });
       }
       this.pot(c, dx + tx * 1.45 + nx * .5, dz + tz * 1.45 + nz * .5, r, .7);
     }
@@ -284,6 +307,7 @@ export class World {
       const chx = x + (r() - .5) * w * .55, chz = z + (r() - .5) * d * .55;
       const chy = this.roofHeight(building, chx, chz);
       b.box(chx, chy + .8, chz, 1.05, 1.9, 1.05, '#c4aa8b');
+      this.solid(c, chx, (chy - .15 + chy + 1.95) / 2, chz, 1.05, 2.1, 1.05, { kind: 'chimney' });
       b.box(chx, chy + 1.8, chz, 1.3, .22, 1.3, '#ded0b1');
       b.box(chx, chy + 1.93, chz, .7, .04, .7, '#6d7060');
       for (let yy = .3; yy < 1.7; yy += .38) b.box(chx, chy + yy, chz + .532, 1.05, .035, .015, '#b3977a');
@@ -314,15 +338,16 @@ export class World {
   }
 
   roofHeight(b, x, z) {
-    if (x < b.x - b.w / 2 - .45 || x > b.x + b.w / 2 + .45 || z < b.z - b.d / 2 - .45 || z > b.z + b.d / 2 + .45) return -Infinity;
+    if (x < b.x - b.w / 2 - .55 || x > b.x + b.w / 2 + .55 || z < b.z - b.d / 2 - .55 || z > b.z + b.d / 2 + .55) return -Infinity;
     if (b.roofType === 0) {
-      const u = b.ridgeX ? z - b.z : x - b.x, half = (b.ridgeX ? b.d : b.w) / 2 + .45;
+      const u = b.ridgeX ? z - b.z : x - b.x, half = (b.ridgeX ? b.d : b.w) / 2 + .55;
       return b.h + b.roofRise * Math.max(0, 1 - Math.abs(u) / half);
     }
     if (b.roofType === 1) {
-      const u = 1 - Math.abs(x - b.x) / (b.w / 2 + .45), v = 1 - Math.abs(z - b.z) / (b.d / 2 + .45);
-      return b.h + b.roofRise * Math.min(1, Math.max(0, Math.min(u, v) / .42));
+      const u = 1 - Math.abs(x - b.x) / (b.w / 2 + .55), v = 1 - Math.abs(z - b.z) / (b.d / 2 + .55);
+      return b.h + b.roofRise * Math.min(1, Math.max(0, Math.min(u, v) / .84));
     }
+    if (b.upper && Math.abs(x - b.upper.x) < b.upper.w / 2 && Math.abs(z - b.upper.z) < b.upper.d / 2) return b.upper.h;
     return b.h;
   }
 
@@ -384,8 +409,9 @@ export class World {
     }
     if(r()>.35){
       const px=x-w*.22,pz=z-d*.2, pw=4.5,pd=3.6;
-      for(const sx of [-1,1])for(const sz of [-1,1]){c.batch.box(px+sx*pw/2,h+1.35,pz+sz*pd/2,.16,2.7,.16,'#a39370');}
+      for(const sx of [-1,1])for(const sz of [-1,1]){c.batch.box(px+sx*pw/2,h+1.35,pz+sz*pd/2,.16,2.7,.16,'#a39370');this.solid(c,px+sx*pw/2,h+1.35,pz+sz*pd/2,.16,2.7,.16,{kind:'post'});}
       for(let j=0;j<7;j++)c.batch.box(px-pw/2+j*pw/6,h+2.75,pz,.14,.18,pd+.5,'#b4a17b');
+      this.solid(c,px,h+2.78,pz,pw+.14,.18,pd+.5,{climbable:false,kind:'pergola'});
       this.bench(c,px,pz,0,h);
       this.pot(c,px+pw/2+.6,pz+pd/2,r,.8,h);
     }
@@ -406,7 +432,7 @@ export class World {
   steppedRoof(c,b,r) {
     const w=b.w*.64,d=b.d*.65,h=2.8+r()*1.5,x=b.x-b.w*.12,z=b.z-b.d*.1;
     c.batch.box(x,b.h+h/2,z,w,h,d,b.wall);
-    this.solid(c,x,b.h+h/2,z,w,h,d,{buildingId:b.id,building:b});
+    this.solid(c,x,b.h+(h+.21)/2,z,w,h+.21,d,{buildingId:b.id,building:b,kind:'wall'});
     c.batch.box(x,b.h+h,z,w+.35,.25,d+.35,'#e4dac0');
     c.batch.box(x,b.h+h+.15,z,w-.3,.12,d-.3,'#aeb69b');
     for(const s of [-1,1]){
@@ -414,7 +440,7 @@ export class World {
       c.batch.box(x+s*(w/2+.08),b.h+1.5,z,.05,1.25,1.25,'#71897d');
     }
     for(let j=0;j<3;j++)this.pot(c,b.x+b.w*.32,b.z-d/2+j*1.7,r,.7,b.h);
-    b.upper = {x,z,w,d,h:b.h+h};
+    b.upper = {x,z,w,d,h:b.h+h+.21};
   }
 
   crate(c,x,y,z,size){
@@ -429,6 +455,7 @@ export class World {
   }
 
   pot(c,x,z,r,scale=1,y=0){
+    this.cylinderSolid(c,x,y,z,.5*scale,1.3*scale,{kind:'pot'});
     c.batch.add(potGeo,x,y+.35*scale,z,.46*scale,.7*scale,.46*scale,'#ba8b68');
     c.batch.add(cylinderGeo,x,y+.69*scale,z,.48*scale,.11*scale,.48*scale,'#caa17d');
     c.batch.ball(x,y+1.02*scale,z,.55*scale,.55*scale,.55*scale,leaves[Math.floor(r()*leaves.length)]);
@@ -436,17 +463,24 @@ export class World {
   }
 
   tree(c,x,z,r,scale=1,y=0){
-    const h=(3.4+r()*2)*scale, color=leaves[Math.floor(r()*leaves.length)];
+    const h=(3.9+r()*1.4)*Math.pow(scale,.55), color=leaves[Math.floor(r()*leaves.length)];
     c.batch.add(taperedGeo,x,y+h*.43,z,.27*scale,h*.86,.27*scale,'#9b8965');
+    const tree={x,z,canopies:[]};
+    const crown=(cx,cy,cz,rx,ry,rz)=>tree.canopies.push(this.ellipsoidSolid(c,cx,cy,cz,rx,ry,rz,{tree,kind:'tree'}));
     if(r()>.82){
       for(let j=0;j<3;j++)c.batch.add(coneGeo,x,y+h*.6+j*h*.23,z,(1.5-j*.28)*scale,h*.65,(1.5-j*.28)*scale,color);
+      crown(x,y+h*.78,z,1.05*scale,h*.42,1.05*scale);
     }else{
       c.batch.beam([x,y+h*.5,z],[x+.8*scale,y+h*.88,z+.3*scale],.13*scale,'#9b8965');
       c.batch.ball(x,y+h,z,2.15*scale,2.1*scale,1.95*scale,color,true);
-      c.batch.ball(x-1.15*scale,y+h*.83,z+.3*scale,1.45*scale,1.55*scale,1.5*scale,color);
-      c.batch.ball(x+.95*scale,y+h*1.07,z-.45*scale,1.45*scale,1.6*scale,1.45*scale,leaves[(leaves.indexOf(color)+1)%leaves.length]);
+      c.batch.ball(x-1.15*scale,y+h*.9,z+.3*scale,1.45*scale,1.35*scale,1.5*scale,color);
+      c.batch.ball(x+.95*scale,y+h*1.07,z-.45*scale,1.45*scale,1.4*scale,1.45*scale,leaves[(leaves.indexOf(color)+1)%leaves.length]);
+      crown(x,y+h,z,2.15*scale,2.1*scale,1.95*scale);
+      crown(x-1.15*scale,y+h*.9,z+.3*scale,1.45*scale,1.35*scale,1.5*scale);
+      crown(x+.95*scale,y+h*1.07,z-.45*scale,1.45*scale,1.4*scale,1.45*scale);
     }
-    if(y===0)this.solid(c,x,h*.4,z,.5*scale,h*.8,.5*scale,{climbable:false});
+    const top=Math.max(...tree.canopies.map(k=>k.y+k.ry));
+    this.cylinderSolid(c,x,y,z,.27*scale,top-.05-y,{climbable:true,tree,kind:'trunk'});
   }
 
   bench(c,x,z,angle=0,y=0){
@@ -462,6 +496,7 @@ export class World {
   }
 
   lamp(c,x,z){
+    this.cylinderSolid(c,x,0,z,.14,3.83,{climbable:true,kind:'lamp'});
     c.batch.add(taperedGeo,x,1.7,z,.11,3.4,.11,'#667b63');
     c.batch.cyl(x,.15,z,.25,.3,'#78866b');
     c.batch.box(x,3.5,z,.46,.65,.46,'#eee0ae');
@@ -470,7 +505,7 @@ export class World {
   }
 
   bunting(c,x1,z1,x2,z2,y){
-    for(const [x,z] of [[x1,z1],[x2,z2]]){c.batch.add(taperedGeo,x,y/2,z,.09,y,.09,'#a09270');c.batch.ball(x,y+.08,z,.13,.13,.13,'#b4a37d');}
+    for(const [x,z] of [[x1,z1],[x2,z2]]){c.batch.add(taperedGeo,x,y/2,z,.09,y,.09,'#a09270');c.batch.ball(x,y+.08,z,.13,.13,.13,'#b4a37d');this.cylinderSolid(c,x,0,z,.1,y+.2,{kind:'pole',walkable:false});}
     let prev=[x1,y,z1];
     for(let j=1;j<=14;j++){
       const t=j/14,x=x1+(x2-x1)*t,z=z1+(z2-z1)*t,yy=y-Math.sin(t*Math.PI)*1.2;
@@ -532,6 +567,47 @@ export class World {
     }
   }
 
+  cars(c,rng){
+    // Parked hatchbacks along the kerb give the streets a sense of scale (3.9 m long, 1.5 m tall).
+    const ox=c.cx*CHUNK,oz=c.cz*CHUNK,palette=['#b7c4c9','#c9b8a2','#8a9aa6','#a8b59a','#d2c7b4','#7c7f86','#b48c7a','#9fb3a0'];
+    for(const s of [-1,1])for(const axis of ['x','z']){
+      const count=rng()<.25?0:1+Math.floor(rng()*2.6);
+      let u=-24+rng()*6;
+      for(let i=0;i<count&&u<23;i++){
+        const alongZ=axis==='x';
+        const x=alongZ?ox+s*30.15:ox+u,z=alongZ?oz+u:oz+s*30.15;
+        this.car(c,x,z,alongZ,palette[Math.floor(rng()*palette.length)],rng);
+        u+=5.2+rng()*7;
+      }
+    }
+  }
+
+  car(c,x,z,alongZ,color,r){
+    const b=c.batch,L=3.9,W=1.7,ry=alongZ?0:Math.PI/2;
+    const dims=(l,w)=>alongZ?[w,l]:[l,w];
+    const [bw,bd]=dims(L,W),[cw,cd]=dims(L*.52,W-.22);
+    const cabinOffset=(r()-.5)*.3;
+    const cx=alongZ?x:x+cabinOffset,cz=alongZ?z+cabinOffset:z;
+    b.box(x,.62,z,bw,.62,bd,color);
+    b.box(x,.36,z,bw-.1,.14,bd-.1,'#4f5551');
+    b.box(cx,1.2,cz,cw,.54,cd,color);
+    const glass='#5f7579';
+    for(const side of [-1,1]){
+      if(alongZ)b.box(cx+side*(cd/2-.0),1.23,cz,.05,.36,cw-.5,glass);else b.box(cx,1.23,cz+side*(cd/2),cw-.5,.36,.05,glass);
+      const [fw,fd]=dims(.08,W-.5);
+      if(alongZ)b.box(cx,1.23,cz+side*cw/2,fd,.4,fw,glass);else b.box(cx+side*cw/2,1.23,cz,fw,.4,fd,glass);
+      const [lw,ld]=dims(.08,.3);
+      for(const e of [-1,1]){const lx=alongZ?x+side*.55:x+e*(L/2),lz=alongZ?z+e*(L/2):z+side*.55;b.box(lx,.68,lz,lw,.16,ld,e===1?'#ecd9a6':'#b8604f');}
+    }
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      const wx=alongZ?x+sx*(W/2-.02):x+sz*1.25,wz=alongZ?z+sz*1.25:z+sx*(W/2-.02);
+      if(alongZ)b.cyl(wx,.33,wz,.33,.24,'#30302c',0,Math.PI/2);else b.cyl(wx,.33,wz,.33,.24,'#30302c',Math.PI/2,0);
+      if(alongZ)b.cyl(wx+sx*.02,.33,wz,.17,.26,'#a9aba2',0,Math.PI/2);else b.cyl(wx,.33,wz+sx*.02,.17,.26,'#a9aba2',Math.PI/2,0);
+    }
+    this.solid(c,x,.48,z,bw,.95,bd,{kind:'car'});
+    this.solid(c,cx,1.22,cz,cw,.54,cd,{kind:'car'});
+  }
+
   makeSpawn(c,r){
     const b=c.batch;
     b.cyl(0,.045,3,6.5,.1,'#c2b79d');
@@ -557,35 +633,6 @@ export class World {
       b.ball(Math.cos(a)*rr,.16,3+Math.sin(a)*rr,.2,.18,.2,'#91ab70');
       b.ball(Math.cos(a)*rr,.34,3+Math.sin(a)*rr,.12,.12,.12,flowers[j%flowers.length]);
     }
-  }
-
-  supportHeight(x,z,referenceY,includeRoofs=true){
-    let height=0;
-    for(const s of this.colliders){
-      if(x<s.minX-.12||x>s.maxX+.12||z<s.minZ-.12||z>s.maxZ+.12)continue;
-      if(s.maxY<=referenceY+.55&&s.maxY>height)height=s.maxY;
-    }
-    if(includeRoofs)for(const b of this.buildings){
-      const h=this.roofHeight(b,x,z);
-      if(h<=referenceY+.65&&h>height)height=h;
-      if(b.upper){const u=b.upper;if(Math.abs(x-u.x)<u.w/2&&Math.abs(z-u.z)<u.d/2&&u.h<=referenceY+.55&&u.h>height)height=u.h;}
-    }
-    return height;
-  }
-
-  nearbyWall(position, maxDistance=.95){
-    let best=null,bestD=maxDistance;
-    for(const s of this.colliders){
-      if(!s.climbable||s.maxY<=position.y+.02||s.minY>position.y+1.1)continue;
-      const qx=Math.max(s.minX,Math.min(s.maxX,position.x)),qz=Math.max(s.minZ,Math.min(s.maxZ,position.z));
-      let dx=position.x-qx,dz=position.z-qz,dist=Math.hypot(dx,dz);
-      if(dist<.001){
-        const faces=[{d:position.x-s.minX,nx:-1,nz:0},{d:s.maxX-position.x,nx:1,nz:0},{d:position.z-s.minZ,nx:0,nz:-1},{d:s.maxZ-position.z,nx:0,nz:1}];
-        faces.sort((a,b)=>a.d-b.d);dx=faces[0].nx;dz=faces[0].nz;dist=0;
-      }else{dx/=dist;dz/=dist;}
-      if(dist<bestD){bestD=dist;best={solid:s,nx:dx,nz:dz,distance:dist,qx,qz};}
-    }
-    return best;
   }
 
   inWater(x,z){return this.water.find(w=>(x-w.x)**2+(z-w.z)**2<w.r*w.r);}

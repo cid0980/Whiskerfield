@@ -38,7 +38,7 @@ Your world seed, cat position, discoveries, and settings are saved locally on th
 | Move | WASD or arrow keys | Paw joystick |
 | Run | Hold Shift | Toggle run button |
 | Jump | Space | Jump button |
-| Climb | Hold E near a wall (holding Space also works) | Hold climb button |
+| Climb | Hold E near a wall, tree, lamp post, or car — or just keep walking into it and the cat scrambles up | Hold climb button (or walk into it) |
 | Look around | Drag the world | Drag the world |
 | Zoom | Scroll | Pinch |
 | Map | M or map button | Map button |
@@ -46,7 +46,9 @@ Your world seed, cat position, discoveries, and settings are saved locally on th
 | Gamepad | Left stick move, right stick look, A jump, B/RB climb, triggers run | Same mapping for Bluetooth controllers |
 | Pause / settings | Escape or settings button | Settings button |
 
-Climbing has no stamina meter. Release the climb control to let go; at the top the cat mantles onto the roof. Falls are harmless.
+Climbing has no stamina meter. Release the climb control to let go; at the top the cat mantles onto the roof, branch, or bonnet. Falls are harmless.
+
+On phones the game asks for fullscreen landscape when you start; a portrait layout is still available via “Continue in portrait”. Add `?seed=your-words` to the URL to visit a specific town.
 
 ## What is generated
 
@@ -63,7 +65,10 @@ The starting square is composed for a gentle first view, but its houses are stil
 ```text
 index.html              App shell and accessible UI
 styles.css              Responsive HUD, menus, and touch controls
-src/main.js             Game loop, physics, camera, input, saves, PWA setup
+src/main.js             Game loop, camera, input, HUD, saves, PWA setup
+src/physics.js          Cat movement, collisions, climbing, perching, mantling
+src/npc.js              Roaming neighbours who stop to fuss the cat
+src/platform.js         Fullscreen, orientation lock, and install helpers
 src/world.js            Seeded procedural town, batching, colliders, map data
 src/cat.js              Animated low-poly cat
 src/audio.js            Web Audio ambience and feedback
@@ -102,6 +107,15 @@ MIT licensed. See `LICENSE`.
 - More natural cat animation: articulated legs, walk/run gait, spine motion, head stabilization, segmented tail, ear flicks, and climbing motion.
 - Mobile controller: analog joystick with deadzone and shaping, larger touch buttons, drag-to-look, pinch zoom, and optional Bluetooth gamepad support.
 - Naturalistic visual theme: grounded plaster/roof/foliage colors, warmer sunlight, subtle ground/fur texture, and a darker glass HUD with brass accents.
+
+## Version 1.2 improvements
+
+- Faster, more responsive cat: brisk walk, a proper sprint (Shift / run button / triggers), analog joystick speeds that stay useful, higher jumps, and shorter climb wind-up.
+- Walk into any climbable thing and the cat scrambles up by itself; trees, lamp posts, chimneys, car bonnets, planters, and fences are climbable or perchable, and the cat lands centred on narrow tops.
+- Every piece of scenery is solid: benches, fountains, pots, parked cars, kerbs, pergolas, and canopies (you can still walk under the leaves).
+- Neighbours wander the pavements in their own directions, chat to each other, and crouch down to greet a visiting cat.
+- Phones: fullscreen landscape on start with orientation lock where supported, a compact non-overlapping HUD, a portrait fallback, and the install button hides once the app is installed or launched from the home screen.
+- Consistent scale between the cat, people, cars, and buildings; the world streams endlessly in every direction.
 
 ## GitHub Pages
 

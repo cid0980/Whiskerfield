@@ -18,8 +18,9 @@ function furTexture() {
 }
 
 export class Cat {
-  constructor(scene) {
-    this.root = new THREE.Group();
+  constructor(scene, size = 1) {
+    this.size = size;
+    this.root = new THREE.Group(); this.root.scale.setScalar(size);
     this.model = new THREE.Group();
     this.root.add(this.model); scene.add(this.root);
     this.materials = {};
@@ -129,12 +130,12 @@ export class Cat {
   update(dt, time, state, groundY, reducedMotion = false) {
     const { speed = 0, grounded = true, climbing = false, resting = false, vy = 0, turnRate = 0, accel = 0, landImpact = 0, runBlend = 0 } = state;
     const moving = speed > .15 && !resting;
-    const gait = speed > 5.4 ? 1 : 0;
-    this.phase += dt * (2.4 + speed * 1.55);
+    const gait = speed > 6.2 ? 1 : 0;
+    this.phase += dt * (2.4 + Math.min(speed, 13) * 1.45);
     this.restBlend = damp(this.restBlend, resting ? 1 : 0, 4.5, dt);
     this.climbBlend = damp(this.climbBlend, climbing ? 1 : 0, 10, dt);
     this.squash = damp(this.squash, landImpact, 9, dt);
-    const stride = clamp(speed / 4.5, 0, 1);
+    const stride = clamp(speed / 5, 0, 1);
     const bob = moving && grounded ? Math.abs(Math.sin(this.phase * (gait ? 1 : 2))) * .035 * stride : Math.sin(time * 1.8) * .008;
     const lean = clamp(-turnRate * .045, -.32, .32) * stride;
     const pitch = clamp(-accel * .012, -.16, .16) + (grounded ? 0 : clamp(-vy * .025, -.28, .22));
@@ -194,9 +195,9 @@ export class Cat {
     for (const eye of this.eyes) eye.scale.y = .06 * blink;
     for (const pupil of this.pupils) pupil.scale.y = .72 * blink;
 
-    this.shadow.position.set(this.root.position.x, groundY + .035, this.root.position.z);
-    const shadowScale = 1 + Math.min(3, Math.max(0, this.root.position.y - groundY)) * .16;
+    this.shadow.position.set(this.root.position.x, groundY + .02, this.root.position.z);
+    const shadowScale = this.size * (1 + Math.min(3, Math.max(0, this.root.position.y - groundY)) * .35);
     this.shadow.scale.set(shadowScale, shadowScale, 1);
-    this.shadow.material.opacity = .28 / (1 + Math.max(0, this.root.position.y - groundY) * .3);
+    this.shadow.material.opacity = .3 / (1 + Math.max(0, this.root.position.y - groundY) * .8);
   }
 }

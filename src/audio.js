@@ -41,6 +41,8 @@ export class NeighborhoodAudio {
   discovery(){if(!this.context)return;const t=this.context.currentTime;[523.25,659.25,783.99].forEach((f,i)=>this.tone(f,t+i*.14,1.3,.07));}
   jump(){if(this.context)this.tone(280,this.context.currentTime,.15,.025,'sine',440);}
   land(){if(this.context)this.tone(130,this.context.currentTime,.1,.025,'sine',80);}
+  greet(){if(!this.context)return;const t=this.context.currentTime;this.tone(660,t,.16,.03,'sine',880);this.tone(880,t+.14,.22,.028,'sine',990);}
+  chirp(){if(this.context)this.tone(1500,this.context.currentTime,.09,.02,'sine',2100);}
   purr(){if(this.context)this.tone(58,this.context.currentTime,.65,.025,'triangle',52);}
   suspend(){if(this.context?.state==='running')this.context.suspend().catch(()=>{});}
   resume(){if(this.started&&this.context?.state==='suspended')this.context.resume().catch(()=>{});}

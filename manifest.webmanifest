@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Whiskerfield — A Little World, All Yours",
+  "short_name": "Whiskerfield",
+  "description": "A peaceful cat adventure through an endless, ever-changing neighborhood. Climb, wander, and find your own patch of sunshine. Fully playable offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#182018",
+  "theme_color": "#182018",
+  "lang": "en",
+  "categories": ["games", "entertainment"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

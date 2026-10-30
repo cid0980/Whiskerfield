@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse } from './places.js';
+import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments } from './places.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -239,6 +239,8 @@ export class World {
       else if (lot === 'tower') makeTower(this, c, x, z, r, id, 1);
       else if (lot === 'spire') makeTower(this, c, x, z, r, id, 1.6);
       else if (lot === 'play') makePlayground(this, c, x, z, r, id);
+      else if (lot === 'station') makeStation(this, c, x, z, r, id);
+      else if (lot === 'allotments') makeAllotments(this, c, x, z, r, id);
       else if (lot === 'cafe' || lot === 'shop' || lot === 'home') makeInterior(this, c, x, z, r, id, lot);
       else this.makeBuilding(c, x, z, r, id, cx === 0 && cz === 0 ? i : -1);
     }
@@ -265,7 +267,7 @@ export class World {
   theme(cx, cz) {
     if (cx === 0 && cz === 0) return 'square';
     const h = hash(cx, cz, this.seed, 77) % 100;
-    return h < 34 ? 'lanes' : h < 50 ? 'market' : h < 64 ? 'works' : h < 80 ? 'towers' : h < 90 ? 'play' : 'lanes';
+    return h < 32 ? 'lanes' : h < 47 ? 'market' : h < 60 ? 'works' : h < 74 ? 'towers' : h < 84 ? 'play' : h < 92 ? 'station' : 'allot';
   }
   lotKind(cx, cz, i, r) {
     const t = this.theme(cx, cz), v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
@@ -274,6 +276,8 @@ export class World {
     if (t === 'works') return ['works', 'depot', v < 40 ? 'park' : 'building', 'building'][i];
     if (t === 'towers') return ['tower', 'spire', 'tower', v < 60 ? 'park' : 'building'][i];
     if (t === 'play') return ['play', 'park', v < 50 ? 'home' : 'building', 'building'][i];
+    if (t === 'station') return ['station', 'cafe', v < 50 ? 'park' : 'building', 'building'][i];
+    if (t === 'allot') return ['allotments', 'home', 'park', 'building'][i];
     if (v < 20) return 'park';
     if (v < 30) return 'home';
     if (v < 34) return 'cafe';

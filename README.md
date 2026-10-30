@@ -15,9 +15,9 @@ It is a static web app (three.js) that installs as a PWA and works offline after
 ## What is in the town
 
 - Endless streets of houses with varied footprints, roofs, balconies, awnings and chimneys, laid out in 72 m chunks from a seed.
-- Districts with their own places: a market with stalls and a bandstand, a works with a flywheel and a smoking chimney, towers with outside stairs, a playground with a climbing frame and a trampoline, a warehouse yard, and a café, a shop and a house you can walk into.
+- Districts with their own places: a market with stalls and a bandstand, a works with a flywheel and a smoking chimney, towers with outside stairs, a playground with a climbing frame and a trampoline, a warehouse yard, a railway station with a train you can climb on, allotments with a greenhouse to wander through, and a café, a shop and a house you can walk into.
 - People who belong somewhere: stallholders, a baker, a mechanic, a waiter, a builder, children, grandparents. Workers stay at their post and look up when you come near; others stroll, chat, and stop to say hello.
-- Birds on fences and ponds, leaves, butterflies, and a small ambient soundtrack made with Web Audio.
+- Birds on fences and ponds, crows on the chimneys, ducks with their ducklings on the park ponds, leaves, butterflies, and a small ambient soundtrack made with Web Audio.
 - Shinies to collect (bottle caps, coins, marbles, keys…) on rooftops and ledges. Each one unlocks a bit more of the wardrobe: nine hats, from a leaf to a crown.
 - Things to knock over: cones, bins, bottles, flowerpots, crates. People nearby will comment.
 - Everything that is drawn is solid. You can climb most walls, trees and lamp posts; low steps and stairs you simply walk up.
@@ -74,6 +74,7 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.4.0** – Further out: two new districts. A railway station (platform, canopy, kiosk, clock, and a steam engine with a carriage – all climbable, driver in the cab) and allotments (raised beds, bean poles, scarecrow, two sheds and a glass greenhouse you can walk into or sit on top of). A mother duck and her ducklings on every park pond; they paddle about, follow in a line, and scatter onto the bank if the cat gets too close. Crows – bigger, black, hoarse – perch on chimneys and rooftops. New quack and caw sounds, map icons and arrival lines for the new places, shinies on the carriage roof and the greenhouse.
 - **1.3.3** – Fixes from play testing: gable roofs were rotated 90° on any non-square building (worst on the café/shop/home lots, where one slope hung past the wall); speech bubbles no longer show through roofs and walls; phone camera limits tightened (max zoom-out 9 m, pitch 55°, gentler pinch) so the cat cannot shrink to a dot.
 - **1.3.2** – UI redesign: paper cards with ink outlines instead of dark glass, one sans-serif, plain copy. README rewritten.
 - **1.3.1** – Shinies, knock-over props, hats (H).

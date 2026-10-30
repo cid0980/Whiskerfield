@@ -10,6 +10,7 @@ const COLOURS = [
   { body: '#9ac3dc', head: '#f0f3f5', wing: '#6d94b4' }, // powder blue
 ];
 const PERCH_KINDS = new Set(['lamp', 'post', 'chimney', 'pergola', 'sill', 'tree', 'pole', 'awning', 'bench', 'fountain', 'box']);
+const CROW = { body: '#2b2b30', head: '#33333a', wing: '#1d1d22', beak: '#4a4a50', crow: true };
 const materialCache = new Map();
 const mat = hex => { if (!materialCache.has(hex)) materialCache.set(hex, new THREE.MeshLambertMaterial({ color: hex })); return materialCache.get(hex); };
 const bodyGeo = new THREE.SphereGeometry(1, 10, 8);
@@ -19,10 +20,11 @@ const tailGeo = new THREE.BoxGeometry(.035, .02, .16);
 
 class Bird {
   constructor(birds, colour) {
-    this.birds = birds; this.group = new THREE.Group(); this.wingFlap = 0; this.phase = Math.random() * 9;
+    this.birds = birds; this.group = new THREE.Group(); this.wingFlap = 0; this.phase = Math.random() * 9; this.crow = !!colour.crow;
+    if (this.crow) this.group.scale.setScalar(1.7);
     const body = new THREE.Mesh(bodyGeo, mat(colour.body)); body.scale.set(.11, .1, .15); body.position.y = .1; this.group.add(body);
     const head = new THREE.Mesh(bodyGeo, mat(colour.head)); head.scale.set(.08, .08, .08); head.position.set(0, .19, .11); this.group.add(head);
-    const beak = new THREE.Mesh(beakGeo, mat('#e5a24a')); beak.scale.set(.04, .05, .04); beak.rotation.x = Math.PI / 2; beak.position.set(0, .185, .2); this.group.add(beak);
+    const beak = new THREE.Mesh(beakGeo, mat(colour.beak || '#e5a24a')); beak.scale.set(.04, .05, .04); beak.rotation.x = Math.PI / 2; beak.position.set(0, .185, .2); this.group.add(beak);
     const tail = new THREE.Mesh(tailGeo, mat(colour.wing)); tail.position.set(0, .1, -.19); tail.rotation.x = -.3; this.group.add(tail);
     this.wings = [-1, 1].map(s => { const w = new THREE.Mesh(wingGeo, mat(colour.wing)); w.scale.set(.18, 1, .2); w.position.set(s * .09, .13, 0); w.geometry = wingGeo; w.userData.side = s; this.group.add(w); return w; });
     for (const s of [-1, 1]) { const eye = new THREE.Mesh(bodyGeo, mat('#2a2a2a')); eye.scale.setScalar(.014); eye.position.set(s * .05, .21, .16); this.group.add(eye); }
@@ -48,7 +50,7 @@ class Bird {
       this.hopTimer -= dt;
       const scared = near < (catSpeed > 8 ? 5.5 : 2.6) && Math.abs(dy) < 3.2;
       if (scared || this.hopTimer <= 0) {
-        const next = birds.findPerch(cat, scared ? 10 : 4, 40, this.perch);
+        const next = birds.findPerch(cat, scared ? 10 : 4, 40, this.perch, this.crow);
         if (next) { this.flyTo(next, scared); if (scared) birds.onStartle?.(this); }
         else this.hopTimer = 2;
       }
@@ -90,7 +92,7 @@ export class Birds {
     }
     return out;
   }
-  findPerch(cat, minD, maxD, avoid = null) {
+  findPerch(cat, minD, maxD, avoid = null, high = false) {
     const options = this.perchesNear(cat.x, cat.z, maxD).filter(p => {
       const d = Math.hypot(p.x - cat.x, p.z - cat.z);
       if (d < minD || d > maxD || p.solid === avoid?.solid) return false;
@@ -98,14 +100,14 @@ export class Birds {
     });
     if (!options.length) return null;
     // Mostly low perches, where the cat can actually see (and be seen by) them.
-    const low = options.filter(p => p.y < 3.4);
-    const pool = low.length && Math.random() < .75 ? low : options;
+    const low = options.filter(p => p.y < 3.4), tall = options.filter(p => p.y >= 3.4);
+    const pool = high ? (tall.length ? tall : options) : (low.length && Math.random() < .75 ? low : options);
     return pool[Math.floor(Math.random() * pool.length)];
   }
   spawnAll(center) {
     for (let i = 0; i < this.count; i++) {
-      const bird = new Bird(this, COLOURS[i % COLOURS.length]);
-      const perch = this.findPerch(center, 6, 45) || { x: center.x + 8, y: .9, z: center.z + 6, solid: null };
+      const crow = i % 4 === 3, bird = new Bird(this, crow ? CROW : COLOURS[i % COLOURS.length]);
+      const perch = this.findPerch(center, 6, 45, null, crow) || { x: center.x + 8, y: .9, z: center.z + 6, solid: null };
       bird.settle(perch); this.group.add(bird.group); this.list.push(bird);
     }
   }
@@ -114,7 +116,7 @@ export class Birds {
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 1;
       for (const b of this.list) {
-        if (Math.hypot(b.group.position.x - cat.x, b.group.position.z - cat.z) > 75) { const p = this.findPerch(cat, 18, 50); if (p) b.settle(p); }
+        if (Math.hypot(b.group.position.x - cat.x, b.group.position.z - cat.z) > 75) { const p = this.findPerch(cat, 18, 50, null, b.crow); if (p) b.settle(p); }
       }
     }
     for (const b of this.list) b.update(dt, cat, catSpeed, this.time);

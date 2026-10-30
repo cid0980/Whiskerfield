@@ -51,6 +51,8 @@ export class NeighborhoodAudio {
     else if(kind==='clay'){this.tone(480,t,.1,.035*v,'triangle',140);this.tone(900,t+.03,.06,.015*v,'square',400);}
     else if(kind==='wood'){this.tone(260,t,.09,.04*v,'triangle',110);this.tone(420,t+.06,.07,.02*v,'triangle',200);}
     else{this.tone(330,t,.1,.03*v,'triangle',120);}}
+  quack(small=false,idle=false){if(!this.context)return;const t=this.context.currentTime,f=small?620:330,v=idle?.02:.035;this.tone(f,t,.12,v,'sawtooth',f*.72);if(!idle)this.tone(f*1.05,t+.15,.1,v*.8,'sawtooth',f*.7);if(small)this.tone(f*1.2,t+.26,.08,v*.6,'sawtooth',f*.9);}
+  caw(){if(!this.context)return;const t=this.context.currentTime;this.tone(520,t,.22,.03,'sawtooth',380);this.tone(500,t+.3,.2,.025,'sawtooth',360);}
   purr(){if(this.context)this.tone(58,this.context.currentTime,.65,.025,'triangle',52);}
   suspend(){if(this.context?.state==='running')this.context.suspend().catch(()=>{});}
   resume(){if(this.started&&this.context?.state==='suspended')this.context.resume().catch(()=>{});}

@@ -87,6 +87,8 @@ export class Fun {
       if (l.kind === 'tower') spots.push([l.x + (rng() - .5) * 3, l.z + (rng() - .5) * 3, 'tower']);
       else if (l.kind === 'playground') spots.push([l.x + (rng() - .5) * 8, l.z + (rng() - .5) * 8, 'play']);
       else if (l.kind === 'market' || l.kind === 'works') spots.push([l.x + (rng() - .5) * 10, l.z + (rng() - .5) * 10, 'ground']);
+      else if (l.kind === 'station') spots.push([l.x + 7.5, l.z + 3.2 + (rng() - .5) * 8, 'roof']);
+      else if (l.kind === 'allotments') spots.push([l.x - 6.5 + (rng() - .5) * 2, l.z + 9, 'roof']);
     }
     for (const p of c.parks) { const a = rng() * TAU; spots.push([p.x + Math.cos(a) * 7, p.z + Math.sin(a) * 7, 'ground']); }
     spots.push([ox + (rng() > .5 ? 28.45 : -28.45), oz + (rng() - .5) * 40, 'ground']);

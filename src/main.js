@@ -5,6 +5,7 @@ import { NeighborhoodAudio } from './audio.js';
 import { CAT, PhysicsWorld, createPlayer, stepPlayer } from './physics.js';
 import { People } from './npc.js';
 import { Fun, HATS, buildHat } from './fun.js';
+import { Ducks } from './ducks.js';
 import { Birds } from './birds.js';
 import * as platform from './platform.js';
 
@@ -37,7 +38,7 @@ const visitedPlaces = new Set(Array.isArray(saved?.places) ? saved.places.filter
 let friendsMade = Number.isFinite(saved?.friends) ? saved.friends : 0;
 const savedShinies = Array.isArray(saved?.shinies) ? saved.shinies.filter(v => typeof v === 'string').slice(-20000) : [];
 let savedKnocks = Number.isFinite(saved?.knocks) ? saved.knocks : 0, hatId = typeof saved?.hat === 'string' && HATS.some(h => h.id === saved.hat) ? saved.hat : 'none';
-let fun = null;
+let fun = null, ducks = null;
 const audio = new NeighborhoodAudio(); audio.enabled = settings.audio; audio.volume = settings.volume;
 let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [], birds;
 let started = false, resting = false, modal = null, previousFocus = null, ready = false, storageWarning = false;
@@ -149,7 +150,7 @@ function init() {
   requestAnimationFrame(() => { requestAnimationFrame(() => { $('loading').classList.add('done'); setTimeout(() => $('loading').hidden = true, 700); }); });
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
-    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); }, get fun() { return fun; }, wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
+    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); }, get fun() { return fun; }, get ducks() { return ducks; }, wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
     getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: hatId, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
     teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
@@ -164,8 +165,9 @@ function createWorld(seed) {
   people.onGreet = () => { friendsMade++; updateCounts(); audio.greet(); if (friendsMade === 1) toast('Your first hello. People remember a friendly cat.', 'heart', 3600); if (friendsMade % 10 === 0) save(); };
   people.spawnAll(player.pos);
   birds = new Birds(scene, world, mobile ? 8 : 14);
-  birds.onStartle = () => { birds.startles++; if (Math.random() < .5) audio.tweet(); };
+  birds.onStartle = b => { birds.startles++; if (b.crow) audio.caw(); else if (Math.random() < .5) audio.tweet(); };
   birds.spawnAll(player.pos);
+  ducks = new Ducks(scene, world, physics); ducks.sync(player.pos); ducks.onQuack = (kind, idle) => audio.quack(kind === 'duckling', idle);
   fun = new Fun(scene, world, physics, { collected: savedShinies, knocks: savedKnocks }); fun.sync();
   fun.onShiny = shiny => {
     const n = fun.found; updateCounts(); audio.shiny(); burst(shiny.x, shiny.y, shiny.z); markDirty();
@@ -321,7 +323,7 @@ function markInstalled() { installed = true; installPrompt = null; platform.reme
 
 function newWorld() {
   stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected], knocks: fun.knocks, hat: hatId, started });
-  people.dispose(); birds.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0; hatId = 'none';
+  people.dispose(); birds.dispose(); ducks.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0; hatId = 'none';
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed()); updateCounts(); $('seed-label').textContent = 'Seed: ' + world.seedText; closeModal(); save();
@@ -442,7 +444,9 @@ const PLACE_LINES = {
   playground: () => 'The playground. Beams, a climbing frame, a slide, a trampoline.',
   cafe: () => 'Inside the café.',
   shop: () => 'The little grocer. Please do not knock over the tins.',
-  home: () => 'Somebody’s living room.'
+  home: () => 'Somebody’s living room.',
+  station: () => 'The station. The train is in, and in no hurry.',
+  allotments: () => 'The allotments. Mind the lettuces.'
 };
 function checkDiscoveries() {
   const p = player.pos;
@@ -555,7 +559,7 @@ function drawMap() {
     if (visited) { ctx.fillStyle = '#f4f4df'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✓', px(b.x), pz(b.z) + 5); }
     else { ctx.fillStyle = '#c5a15d'; ctx.beginPath(); ctx.arc(px(b.x), pz(b.z), 2.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  const ICON = { market: '#d7a048', works: '#8a6a4c', warehouse: '#8a8072', tower: '#5f6b66', playground: '#d9544f', cafe: '#c88f6e', shop: '#6f9a4f', home: '#b48c9c' };
+  const ICON = { market: '#d7a048', works: '#8a6a4c', warehouse: '#8a8072', tower: '#5f6b66', playground: '#d9544f', cafe: '#c88f6e', shop: '#6f9a4f', home: '#b48c9c', station: '#4f7f96', allotments: '#8fb04f' };
   for (const l of world.landmarks) {
     const seen = visitedPlaces.has(l.id); ctx.fillStyle = ICON[l.kind] || '#999'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(px(l.x), pz(l.z), seen ? 7 : 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -605,13 +609,14 @@ function loop(now) {
   cat.update(dt, time, { speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, resting, vy: player.vy, turnRate: player.turnRate, accel: player.accel, landImpact: player.landImpact, runBlend: player.runBlend }, groundY, settings.reducedMotion);
   people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed);
   if (started && !modal) fun.update(dt, player, people);
+  ducks.update(dt, player.pos, time);
   if (!started && !settings.reducedMotion) cameraYawTarget += dt * .03;
   updateCamera(dt); updateAtmosphere(dt); audio.update(dt); updateBubble();
   ground.position.x = player.pos.x; ground.position.z = player.pos.z;
   sun.position.set(player.pos.x - 35, 60, player.pos.z + 25); sun.target.position.set(player.pos.x, 0, player.pos.z);
   hudTimer += dt;
   if (hudTimer > .25) {
-    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync();
+    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync(); ducks.sync(player.pos);
     const showHint = !!wallHint && !player.climbing && !resting && started && !modal && player.grounded;
     $('context-hint').classList.toggle('visible', showHint && !mobile);
     $('touch-climb').classList.toggle('ready', showHint);

@@ -536,3 +536,34 @@ test('fun: shinies can be picked up, things can be knocked over, and hats unlock
   expect(await page.locator('.hat-card').count()).toBe(10);
   await expect(page.locator('.hat-card.wearing strong')).toHaveText('Leaf');
 });
+
+test('out of town: a station with a train you can climb, allotments with a greenhouse, ducks that flee, crows up high', async ({ page }) => {
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); }, out = {};
+    g.start();
+    // Ducks live on the nearest pond and keep away from the cat.
+    const flock = [...g.ducks.flocks.values()][0], m = flock[0], d0 = [m.x, m.z];
+    out.ducks = { flocks: g.ducks.flocks.size, size: flock.length, ducklingsFollow: flock.slice(1).every(d => d.follow) };
+    g.teleport(m.x - 1.5, .3, m.z); step(120); out.ducks.moved = Math.hypot(m.x - d0[0], m.z - d0[1]); out.ducks.startles = g.ducks.startles;
+    out.ducks.nearPond = Math.hypot(m.x - m.pond.x, m.z - m.pond.z) < m.pond.r + 2.5;
+    // Crows prefer roofs and chimneys.
+    const crows = g.birds.list.filter(b => b.crow); out.crows = { count: crows.length, high: crows.filter(b => b.perch.y >= 3.4).length };
+    // The station lot (seed moss-424): a platform step, a climbable engine, and a landmark that can be discovered.
+    g.teleport(-460, .3, 355); step(40); const st = g.world.landmarks.find(l => l.kind === 'station');
+    out.station = { found: !!st, name: st?.name, people: g.people.list.filter(p => Math.hypot(p.x - st.x, p.z - st.z) < 20).length };
+    g.teleport(st.x + 7.5, 4, st.z + 2); step(40); out.station.onTrain = g.player.pos.y;
+    g.teleport(-448, .3, -215); step(40); const al = g.world.landmarks.find(l => l.kind === 'allotments');
+    out.allot = { found: !!al, name: al?.name };
+    g.teleport(al.x - 6.5, .3, al.z + 9); step(40); out.allot.insideGreenhouse = g.player.pos.y;
+    g.teleport(al.x - 6.5, 3, al.z + 9); step(40); out.allot.onGreenhouseRoof = g.player.pos.y;
+    return out;
+  });
+  expect(r.ducks.flocks).toBeGreaterThanOrEqual(1); expect(r.ducks.size).toBeGreaterThanOrEqual(4); expect(r.ducks.ducklingsFollow).toBe(true);
+  expect(r.ducks.moved).toBeGreaterThan(.8); expect(r.ducks.startles).toBeGreaterThan(0); expect(r.ducks.nearPond).toBe(true);
+  expect(r.crows.count).toBeGreaterThanOrEqual(2); expect(r.crows.high).toBeGreaterThanOrEqual(1);
+  expect(r.station.found).toBe(true); expect(r.station.name).toBe('the station'); expect(r.station.people).toBeGreaterThanOrEqual(3);
+  expect(r.station.onTrain).toBeGreaterThan(2.5);
+  expect(r.allot.found).toBe(true); expect(r.allot.insideGreenhouse).toBeLessThan(.6); expect(r.allot.onGreenhouseRoof).toBeGreaterThan(2);
+});

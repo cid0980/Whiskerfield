@@ -142,7 +142,7 @@ export class Cat {
 
     this.model.rotation.x = -this.climbBlend * 1.12 + pitch * (1 - this.climbBlend);
     this.model.rotation.z = lean * (1 - this.restBlend) + (moving && grounded ? Math.sin(this.phase) * .018 * stride : 0);
-    this.model.position.y = bob - this.restBlend * .2 - this.squash * .09;
+    this.model.position.y = bob - this.restBlend * .4 - this.squash * .09;
     this.model.position.z = -this.climbBlend * .1;
     this.spine.rotation.x = Math.sin(this.phase * 2) * .025 * stride + this.restBlend * .08;
     this.spine.scale.y = 1 - this.squash * .12 + this.restBlend * .02;
@@ -166,13 +166,13 @@ export class Cat {
       }
       hipRot *= 1 - this.restBlend;
       kneeRot *= 1 - this.restBlend;
-      leg.hip.rotation.x = damp(leg.hip.rotation.x, hipRot + this.restBlend * (leg.front ? -.9 : .9), 18, dt);
-      leg.knee.rotation.x = damp(leg.knee.rotation.x, kneeRot + this.restBlend * 1.5, 18, dt);
-      leg.hip.rotation.z = (leg.x > 0 ? 1 : -1) * this.restBlend * .28;
+      leg.hip.rotation.x = damp(leg.hip.rotation.x, hipRot + this.restBlend * (leg.front ? -1.42 : -1.1), 18, dt);
+      leg.knee.rotation.x = damp(leg.knee.rotation.x, kneeRot + this.restBlend * (leg.front ? .08 : 2.35), 18, dt);
+      leg.hip.rotation.z = (leg.x > 0 ? 1 : -1) * this.restBlend * (leg.front ? .1 : .42);
       leg.paw.rotation.x = -leg.knee.rotation.x * .45;
     }
 
-    this.head.position.y = 1.02 - this.restBlend * .25 - bob * .55;
+    this.head.position.y = 1.02 - this.restBlend * .2 - bob * .55;
     this.head.position.z = .56 + this.restBlend * .04;
     this.head.rotation.x = this.restBlend * .22 + (climbing ? -.25 : 0) - pitch * .55 + Math.sin(this.phase * 2) * .012 * stride;
     this.headLook = damp(this.headLook, !moving && !resting && !reducedMotion ? Math.sin(time * .5) * .18 : -lean * .5, 3, dt);
@@ -183,8 +183,9 @@ export class Cat {
     for (let i = 0; i < this.tailSegments.length; i++) {
       const seg = this.tailSegments[i], lag = i * .45;
       seg.rotation.z = Math.sin(time * (resting ? 1.1 : 2.2) - lag) * (resting ? .08 : .12) + this.tailSway * (i / 6);
-      seg.rotation.x = (i === 0 ? .35 : .12) + Math.sin(time * 1.3 - lag) * .05 - this.restBlend * .32 + (climbing ? .18 : 0) + lean * .08 * i;
-      seg.rotation.y = this.restBlend * .22 * i;
+      // Resting: the tail lies flat and curls round the flank instead of standing up.
+      seg.rotation.x = (i === 0 ? .35 : .12) + Math.sin(time * 1.3 - lag) * .05 + this.restBlend * (i === 0 ? -1.45 : -.06) + (climbing ? .18 : 0) + lean * .08 * i;
+      seg.rotation.y = this.restBlend * (i === 0 ? .3 : .45);
     }
     const twitch = !moving && Math.sin(time * .7) > .985 ? Math.sin(time * 25) * .12 : 0;
     this.twitchEar.rotation.z = -.22 + twitch - lean * .15;

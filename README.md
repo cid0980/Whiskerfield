@@ -138,6 +138,10 @@ MIT licensed. See `LICENSE`.
 
 - Paws on top of the paving: pavements (13 cm), park paths, footpaths, roads and the square now have real ground heights, so the cat and the neighbours no longer stand ankle-deep in the kerb. Stepping on or off a kerb is a smooth step, never a fall. The pond sits slightly below the lawn.
 
+## Version 1.2.4 fix
+
+- A proper catnap pose: belly on the ground, front paws stretched forward, hind legs tucked beside the body, tail lying flat and curling round — instead of the splayed sprawl.
+
 ## GitHub Pages
 
 The included workflow at `.github/workflows/deploy.yml` builds the game and deploys the static site to GitHub Pages on every push to `main`.

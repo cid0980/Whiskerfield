@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments } from './places.js';
+import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments, makeRailway, makeAirport, railTrack } from './places.js';
+import { hollow, doorway, furnishHouse, FLOORS, PLACE_NAMES } from './rooms.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -78,17 +79,60 @@ export class Batch {
   }
 }
 
-const walls = ['#d6c4a6', '#c9b79b', '#b9c0ae', '#aeb9b2', '#d8cbb2', '#c4b49a', '#b7bfae', '#cbb9a4', '#c2c7b6', '#d2c1a4'];
-const roofs = ['#8a5a44', '#96604a', '#7b5140', '#5c6b66', '#65756d', '#6f6252', '#8a6a4c', '#5a6870'];
-const leaves = ['#6f8a52', '#7d965c', '#8a9f66', '#62804f', '#93a26b', '#6b8757'];
-const flowers = ['#d9b76a', '#d69a86', '#e6d9b4', '#b98a9a', '#d9a85e'];
-const districtFirst = ['Clover', 'Willow', 'Honey', 'Fern', 'Moss', 'Clementine', 'Juniper', 'Lavender', 'Pebble', 'Marigold', 'Chestnut', 'Meadow', 'Rosemary', 'Hazel', 'Poppy', 'Bramble'];
-const districtLast = ['Quarter', 'Gardens', 'Lane', 'Hill', 'Corner', 'Heights', 'Common', 'Terrace'];
-export function districtName(cx, cz, seed) { const h = hash(Math.floor(cx / 2), Math.floor(cz / 2), seed, 71); return `${districtFirst[h % districtFirst.length]} ${districtLast[(h >>> 8) % districtLast.length]}`; }
+// Countries. Each is a palette and a few habits (what the trees look like, whether it snows);
+// the same generator builds all of them, so a flight lands you somewhere that feels different
+// without a second set of rules.
+export const COUNTRIES = {
+  whiskerfield: {
+    id: 'whiskerfield', name: 'Whiskerfield', code: 'WF', line: 'Home. The kettle is probably on.',
+    sky: '#c9d4c8', ground: '#93a86f', grass: ['#93a86f', '#9aae75', '#8fa46a', '#a0b27b'], lawn: '#8fa66b', road: '#b9ae96', pavement: '#cfc4ab', trees: 'round', snow: false,
+    walls: ['#d6c4a6', '#c9b79b', '#b9c0ae', '#aeb9b2', '#d8cbb2', '#c4b49a', '#b7bfae', '#cbb9a4', '#c2c7b6', '#d2c1a4'],
+    roofs: ['#8a5a44', '#96604a', '#7b5140', '#5c6b66', '#65756d', '#6f6252', '#8a6a4c', '#5a6870'],
+    leaves: ['#6f8a52', '#7d965c', '#8a9f66', '#62804f', '#93a26b', '#6b8757'], flowers: ['#d9b76a', '#d69a86', '#e6d9b4', '#b98a9a', '#d9a85e'], leaf: '#e8d59a',
+    first: ['Clover', 'Willow', 'Honey', 'Fern', 'Moss', 'Clementine', 'Juniper', 'Lavender', 'Pebble', 'Marigold', 'Chestnut', 'Meadow', 'Rosemary', 'Hazel', 'Poppy', 'Bramble'], last: ['Quarter', 'Gardens', 'Lane', 'Hill', 'Corner', 'Heights', 'Common', 'Terrace']
+  },
+  sunmarch: {
+    id: 'sunmarch', name: 'Sunmarch', code: 'SM', line: 'Sunmarch. Warm stone, warmer roofs. Find some shade.',
+    sky: '#dfe6e3', ground: '#bdae74', grass: ['#bdae74', '#c4b57a', '#b7a76e', '#c9ba80'], lawn: '#b3a86c', road: '#cbbd9f', pavement: '#dfd3b6', trees: 'palm', snow: false,
+    walls: ['#e8c9a0', '#f0d9b5', '#d9a77a', '#e6b58a', '#f2e2c4', '#cf9b76', '#e9d2a9', '#dcb48e', '#f4e4c8', '#d7a583'],
+    roofs: ['#b4553c', '#c4654a', '#a8503a', '#bd6147', '#9d4a36', '#c86e52', '#ad5b43', '#b85f45'],
+    leaves: ['#5f7f4a', '#6e8a4f', '#7f9a56', '#557a44', '#8ea563', '#64854c'], flowers: ['#e8578a', '#f29b4b', '#f4e37a', '#d94f6b', '#f7b267'], leaf: '#f1c27a',
+    first: ['Lemon', 'Olive', 'Almond', 'Saffron', 'Fig', 'Cicada', 'Terracotta', 'Amber', 'Salt', 'Orange', 'Mimosa', 'Pomegranate', 'Dune', 'Siesta', 'Oleander', 'Sage'], last: ['Piazza', 'Walk', 'Steps', 'Court', 'Orchard', 'Rise', 'Yard', 'Terrace']
+  },
+  norrholm: {
+    id: 'norrholm', name: 'Norrholm', code: 'NH', line: 'Norrholm. Snow on everything. Mind your paws.',
+    sky: '#d9e0e6', ground: '#e9edf1', grass: ['#e9edf1', '#eef1f4', '#e4e9ee', '#f0f3f6'], lawn: '#e6eaee', road: '#a9adb2', pavement: '#c3c7cb', trees: 'pine', snow: true,
+    walls: ['#8a3f35', '#9c4a3c', '#5d4a3a', '#6e5542', '#d9d3c3', '#4f5d6b', '#7a3a32', '#c9c1ad', '#3f4f5a', '#8b6a50'],
+    roofs: ['#eef1f4', '#e8ecf0', '#f2f4f6', '#e4e8ec', '#edf0f3', '#e9edf1', '#f0f3f6', '#e6eaee'],
+    leaves: ['#3f6b4a', '#466f4e', '#3a6245', '#4c7553', '#427050', '#3b6647'], flowers: ['#ffffff', '#e7ecf0', '#f3f5f7', '#dfe6ea', '#eef1f4'], leaf: '#ffffff',
+    first: ['Birch', 'Elk', 'Frost', 'Lantern', 'Pine', 'Ember', 'Ice', 'Aurora', 'Sled', 'Wool', 'Candle', 'Harbour', 'Reindeer', 'Lingon', 'Cinnamon', 'Fjord'], last: ['Gate', 'Hollow', 'Way', 'Hill', 'Square', 'Ridge', 'Quay', 'Row']
+  },
+  hanamura: {
+    id: 'hanamura', name: 'Hanamura', code: 'HM', line: 'Hanamura. Blossom on the wind and tiles the colour of rain.',
+    sky: '#d8dfe0', ground: '#8fa87a', grass: ['#8fa87a', '#97ae80', '#89a274', '#9cb285'], lawn: '#8aa676', road: '#b5b1a3', pavement: '#cfcabb', trees: 'blossom', snow: false,
+    walls: ['#efe6d2', '#e9dfc9', '#f3ead6', '#e4d9c0', '#d8cbb0', '#eee4ce', '#e6dcc6', '#f0e7d4', '#dfd4ba', '#ece2cc'],
+    roofs: ['#4b5058', '#555b63', '#3f454d', '#5a6068', '#484e56', '#60666e', '#43494f', '#515760'],
+    leaves: ['#f0b7c8', '#f5c6d4', '#6f8a52', '#e9a7bb', '#7d965c', '#f7cfdb'], flowers: ['#f6c9d6', '#ffffff', '#f1b4c6', '#fbe3ea', '#e99ab3'], leaf: '#f6c9d6',
+    first: ['Plum', 'Crane', 'Maple', 'Koi', 'Moon', 'Bamboo', 'Paper', 'Tea', 'Heron', 'Iris', 'Lotus', 'Pine', 'Mist', 'Lantern', 'Willow', 'Stone'], last: ['Street', 'Gardens', 'Bridge', 'Steps', 'Crossing', 'Lane', 'Terrace', 'Ward']
+  }
+};
+export const COUNTRY_IDS = Object.keys(COUNTRIES);
+let country = COUNTRIES.whiskerfield;
+let walls = country.walls, roofs = country.roofs, leaves = country.leaves, flowers = country.flowers;
+export function applyCountry(id) { country = COUNTRIES[id] || COUNTRIES.whiskerfield; walls = country.walls; roofs = country.roofs; leaves = country.leaves; flowers = country.flowers; return country; }
+export function currentCountry() { return country; }
+export function districtName(cx, cz, seed) { const h = hash(Math.floor(cx / 2), Math.floor(cz / 2), seed, 71); return `${country.first[h % country.first.length]} ${country.last[(h >>> 8) % country.last.length]}`; }
+const mod = (a, n) => ((a % n) + n) % n;
+// Railway lines run north–south every six chunks; airports sit two chunks east of them, every six chunks north–south.
+export const isRailColumn = cx => mod(cx, 6) === 1;
+export const railX = cx => cx * CHUNK - 9;
+export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0;
+export const isStationChunk = (cx, cz) => isRailColumn(cx) && mod(cz, 2) === 0;
 
 export class World {
-  constructor(scene, seedText) {
-    this.scene = scene; this.seedText = seedText; this.seed = hashString(seedText);
+  constructor(scene, seedText, countryId = 'whiskerfield') {
+    this.scene = scene; this.seedText = seedText; this.country = applyCountry(countryId); this.seed = hashString(countryId === 'whiskerfield' ? seedText : seedText + '~' + countryId);
+    this.airports = [];
     this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.spatial = new Map();
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .98, metalness: 0, flatShading: true });
     this.center = ''; this.radius = 2; this.pending = [];
@@ -116,8 +160,8 @@ export class World {
   }
 
   refreshColliders() {
-    this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = [];
-    for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); this.jobs.push(...c.jobs); this.grounds.push(...c.grounds); this.landmarks.push(...c.landmarks); }
+    this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.airports = [];
+    for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); this.jobs.push(...c.jobs); this.grounds.push(...c.grounds); this.landmarks.push(...c.landmarks); if (c.airports) this.airports.push(...c.airports); }
     // 8 m spatial hash so physics, NPCs, and the camera only touch nearby solids.
     const index = new Map();
     for (const s of this.colliders) {
@@ -168,6 +212,7 @@ export class World {
       if (sphere && Math.max(sx, sz) < .25) continue; // flowers, leaf tufts
       if (g === coneGeo && sx < .6) continue; // finials, lamp caps, lampshades
       if (!upright && round && sx < .15) continue; // thin rafters, branches
+      if (!upright && g === boxGeo && [sx, sy, sz].sort((a, b) => a - b)[1] < .1) continue; // tilted rods and tile strips: their boxes would wall off whole roofs
       let minX, maxX, minY, maxY, minZ, maxZ;
       if (upright && Math.abs(ry) < .02) { minX = x - hx; maxX = x + hx; minY = y - hy; maxY = y + hy; minZ = z - hz; maxZ = z + hz; }
       else {
@@ -204,10 +249,10 @@ export class World {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
     const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [] };
     const ox = cx * CHUNK, oz = cz * CHUNK;
-    const grass = ['#93a86f', '#9aae75', '#8fa46a', '#a0b27b'][hash(cx, cz, this.seed, 4) % 4];
+    const grass = country.grass[hash(cx, cz, this.seed, 4) % 4];
     c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
     // Neighborhood streets are continuous across chunk boundaries.
-    const road = '#b9ae96', pavement = '#cfc4ab';
+    const road = country.road, pavement = country.pavement;
     for (const s of [-1, 1]) {
       c.batch.box(ox + s * 32.5, .005, oz, 7, .08, CHUNK, road);
       c.batch.box(ox, .006, oz + s * 32.5, CHUNK, .08, 7, road);
@@ -227,7 +272,10 @@ export class World {
       const z = i % 2 ? oz + along : oz + 32.5 + across;
       c.batch.box(x, .052, z, .45 + rng() * .6, .018, .3 + rng() * .35, rng() > .5 ? '#aaa08a' : '#c4b99f', (rng() - .5) * .2);
     }
-    for (let i = 0; i < 4; i++) {
+    const airport = isAirportChunk(cx, cz);
+    if (isRailColumn(cx)) railTrack(this, c, railX(cx), oz, rng, isStationChunk(cx, cz));
+    if (airport) makeAirport(this, c, ox, oz, rng, key);
+    for (let i = 0; i < 4 && !airport; i++) {
       const lx = i % 2 ? 16.5 : -16.5, lz = i < 2 ? -16.5 : 16.5;
       const x = ox + lx, z = oz + lz;
       const r = random(hash(cx * 4 + i, cz, this.seed, 901));
@@ -240,20 +288,20 @@ export class World {
       else if (lot === 'spire') makeTower(this, c, x, z, r, id, 1.6);
       else if (lot === 'play') makePlayground(this, c, x, z, r, id);
       else if (lot === 'station') makeStation(this, c, x, z, r, id);
+      else if (lot === 'rail') makeRailway(this, c, x, z, r, id, isStationChunk(cx, cz) ? 'bridge' : hash(cx, cz, this.seed, 33) % 2 ? 'yard' : 'crossing');
       else if (lot === 'allotments') makeAllotments(this, c, x, z, r, id);
       else if (lot === 'cafe' || lot === 'shop' || lot === 'home') makeInterior(this, c, x, z, r, id, lot);
       else this.makeBuilding(c, x, z, r, id, cx === 0 && cz === 0 ? i : -1);
     }
     // Street trees, lanterns, and small places to pause.
     for (const s of [-1, 1]) {
-      this.tree(c, ox + s * 27.4, oz + 5, rng, .65);
-      this.tree(c, ox - 7, oz + s * 27.4, rng, .65);
+      if (!airport) { this.tree(c, ox + s * 27.4, oz + 5, rng, .65); this.tree(c, ox - 7, oz + s * 27.4, rng, .65); }
       this.lamp(c, ox + s * 27.2, oz - 27.2);
-      if (rng() > .35) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
+      if (rng() > .35 && !airport) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
     }
     if (cx === 0 && cz === 0) {
       this.makeSpawn(c, rng);
-    } else if (rng() > .65) {
+    } else if (rng() > .65 && !country.snow && !airport) {
       this.bunting(c, ox - 12, oz, ox + 12, oz, 6.5);
     }
     this.autoColliders(c, c.batch.items);
@@ -266,17 +314,25 @@ export class World {
   // Every chunk has a character; the character decides what its four lots become.
   theme(cx, cz) {
     if (cx === 0 && cz === 0) return 'square';
+    if (isAirportChunk(cx, cz)) return 'airport';
     const h = hash(cx, cz, this.seed, 77) % 100;
-    return h < 32 ? 'lanes' : h < 47 ? 'market' : h < 60 ? 'works' : h < 74 ? 'towers' : h < 84 ? 'play' : h < 92 ? 'station' : 'allot';
+    const t = h < 34 ? 'lanes' : h < 49 ? 'market' : h < 62 ? 'works' : h < 76 ? 'towers' : h < 88 ? 'play' : 'allot';
+    return isRailColumn(cx) ? 'rail-' + t : t;
   }
   lotKind(cx, cz, i, r) {
-    const t = this.theme(cx, cz), v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
+    let t = this.theme(cx, cz); const v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
+    if (t === 'airport') return 'airport';
+    if (t.startsWith('rail-')) {
+      // The two western lots carry the line: a station every other chunk, sidings or a crossing otherwise.
+      if (i === 0) return isStationChunk(cx, cz) ? 'station' : 'rail';
+      if (i === 2) return 'rail';
+      t = t.slice(5); if (t === 'towers' || t === 'works') t = 'lanes';
+    }
     if (t === 'square') return ['building', 'market', 'cafe', 'park'][i];
     if (t === 'market') return ['market', 'cafe', 'shop', v < 50 ? 'park' : 'home'][i];
     if (t === 'works') return ['works', 'depot', v < 40 ? 'park' : 'building', 'building'][i];
     if (t === 'towers') return ['tower', 'spire', 'tower', v < 60 ? 'park' : 'building'][i];
     if (t === 'play') return ['play', 'park', v < 50 ? 'home' : 'building', 'building'][i];
-    if (t === 'station') return ['station', 'cafe', v < 50 ? 'park' : 'building', 'building'][i];
     if (t === 'allot') return ['allotments', 'home', 'park', 'building'][i];
     if (v < 20) return 'park';
     if (v < 30) return 'home';
@@ -295,6 +351,10 @@ export class World {
         for (let i = 0; i < e.count; i++) { const mesh = new THREE.Mesh(geo, m); mesh.position.set(e.x - (e.count - 1) / 2 * e.spacing + i * e.spacing, e.y, e.z); group.add(mesh); rollers.push(mesh); }
         const box = new THREE.Mesh(new THREE.BoxGeometry(.7, .5, .6), mat('#c7a97b')); group.add(box);
         c.ticks.push(t => { for (const r of rollers) r.rotation.x = t * 3; box.position.set(e.x - 3.2 + ((t * .9) % 6.4), e.y + .36, e.z); });
+      } else if (e.kind === 'piston') {
+        const ram = new THREE.Mesh(new THREE.BoxGeometry(1.4, .5, 1), mat('#8a9893')), rod = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, 1.6, 8), mat('#5f6b66'));
+        group.add(ram); group.add(rod);
+        c.ticks.push(t => { const k = (Math.sin(t * 2.2) + 1) / 2; ram.position.set(e.x, e.y - .9 + k * .8, e.z); rod.position.set(e.x, e.y + .2 + k * .8, e.z); });
       } else if (e.kind === 'cog') {
         const g = new THREE.Group(); g.position.set(e.x, e.y, e.z);
         g.add(new THREE.Mesh(new THREE.TorusGeometry(e.r, .14, 6, 14), mat('#5f6b66')));
@@ -336,11 +396,23 @@ export class World {
     const roofRise = roofType === 0 ? 2.4 + r() * 2 : roofType === 1 ? 2.5 + r() * 1.7 : 0;
     const building = { id, x, z, w, d, h, roofType, roofRise, ridgeX, wall, roofColor, cx: c.cx, cz: c.cz, kind: 'roof' };
     c.buildings.push(building);
-    const body = this.solid(c, x, h / 2, z, w, h, d, { buildingId: id, building, kind: 'wall' });
+    const doorSide = special >= 0 ? (special === 2 ? 1 : 0) : Math.floor(r() * 4);
+    const doorU = (r() - .5) * w * .28, doorW = 1.5, doorH = 2.3;
+    // The ground floor is a real room: four walls round a doorway, a floor, and the upper
+    // storeys as one block above it (its underside is the ceiling).
+    const fy = .42, t = .32;
+    const body = this.solid(c, x, (floorH + h) / 2, z, w, h - floorH, d, { buildingId: id, building, kind: 'wall' });
     building.body = body;
     if (roofType < 2) c.colliders.push({ shape: 'roof', building, kind: 'roof', climbable: false, minX: x - w / 2 - .55, maxX: x + w / 2 + .55, minY: h, maxY: h + roofRise, minZ: z - d / 2 - .55, maxZ: z + d / 2 + .55 });
     b.box(x, .18, z, w + .35, .45, d + .35, '#b8b6a0');
-    b.box(x, h / 2, z, w, h, d, wall);
+    b.box(x, (floorH + h) / 2, z, w, h - floorH, d, wall);
+    const floorColor = FLOORS[Math.floor(r() * FLOORS.length)];
+    b.box(x, fy - .05, z, w - .1, .1, d - .1, floorColor); this.solid(c, x, fy / 2, z, w, fy, d, { climbable: false, kind: 'floor', buildingId: id });
+    b.box(x, floorH - .08, z, w - .2, .16, d - .2, '#efe8d6');
+    const inside = hollow(this, c, x, z, w, d, 0, floorH, t, { side: doorSide, u: doorU, width: doorW, height: doorH }, wall, { buildingId: id, building });
+    for (const sd of [0, 1, 2, 3]) { const a = sd * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)); b.box(x + nx * (sd % 2 ? w / 2 - t - .02 : 0), fy + .06, z + nz * (sd % 2 ? 0 : d / 2 - t - .02), sd % 2 ? .05 : w - 2 * t, .12, sd % 2 ? d - 2 * t : .05, '#efe8d6'); } // skirting
+    const rooms = furnishHouse(this, c, inside, fy, floorH, r, doorSide, doorU, wall, id, special === 0 ? 'bakery' : null);
+    c.landmarks.push({ id: id + ':in', kind: 'house', x, z, radius: 3, name: `${PLACE_NAMES[rooms[0].kit]} and ${PLACE_NAMES[rooms[1].kit]}`, inside, y: fy, kits: rooms.map(k => k.kit) });
     b.box(x, h - .12, z, w + .38, .25, d + .38, '#e8dfc4');
     const trim = '#ede5cd', glass = '#647e78', shutter = roofColor;
     // Lightly articulated plaster, corner stones, and floor courses.
@@ -350,8 +422,6 @@ export class World {
     if (r() > .35) for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (let yy = .7; yy < h - .5; yy += .85) {
       b.box(x + sx * (w / 2 - .06), yy, z + sz * (d / 2 - .06), .56, .37, .56, '#ded6bc');
     }
-    const doorSide = special >= 0 ? (special === 2 ? 1 : 0) : Math.floor(r() * 4);
-    const doorU = (r() - .5) * w * .28;
     for (let side = 0; side < 4; side++) {
       const angle = side * Math.PI / 2, nx = Math.sin(angle), nz = Math.cos(angle), tx = nz, tz = -nx;
       const faceW = side % 2 ? d : w, halfD = side % 2 ? w / 2 : d / 2;
@@ -388,12 +458,8 @@ export class World {
       const a = doorSide * Math.PI / 2, nx = Math.sin(a), nz = Math.cos(a), tx = nz, tz = -nx;
       const half = doorSide % 2 ? w / 2 : d / 2;
       const dx = x + nx * (half + .1) + tx * doorU, dz = z + nz * (half + .1) + tz * doorU;
-      b.box(dx, 1.25, dz, 1.75, 2.5, .2, trim, a);
-      b.box(dx + nx * .12, 1.2, dz + nz * .12, 1.4, 2.35, .08, '#5d796a', a);
-      b.box(dx + nx * .18, 1.65, dz + nz * .18, .95, .85, .04, '#9aaf98', a);
-      b.ball(dx + nx * .23 + tx * .43, 1.05, dz + nz * .23 + tz * .43, .065, .065, .065, '#d5b773');
-      b.box(dx + nx * .45, .14, dz + nz * .45, 2.15, .25, .95, '#cdc7ae', a);
-      this.solid(c, dx + nx * .35, .12, dz + nz * .35, doorSide % 2 ? .8 : 2.1, .24, doorSide % 2 ? 2.1 : .8, { climbable: false });
+      doorway(this, c, x + nx * half, z + nz * half, doorSide, doorU, doorW, doorH, trim, '#5d796a');
+      for (const [off, sy, sh, sw] of [[.3, .21, .42, .55], [.8, .1, .2, .5]]) { b.box(dx + nx * off, sy, dz + nz * off, doorSide % 2 ? sw : 2.15, sh, doorSide % 2 ? 2.15 : sw, '#cdc7ae'); this.solid(c, dx + nx * off, sy, dz + nz * off, doorSide % 2 ? sw : 2.15, sh, doorSide % 2 ? 2.15 : sw, { climbable: false, kind: 'step' }); }
       if (r() > .4) {
         const stripe = roofs[Math.floor(r() * roofs.length)];
         for (let s = 0; s < 8; s++) {
@@ -594,8 +660,21 @@ export class World {
     c.batch.add(taperedGeo,x,y+h*.43,z,.27*scale,h*.86,.27*scale,'#9b8965');
     const tree={x,z,canopies:[]};
     const crown=(cx,cy,cz,rx,ry,rz)=>tree.canopies.push(this.ellipsoidSolid(c,cx,cy,cz,rx,ry,rz,{tree,kind:'tree'}));
-    if(r()>.82){
-      for(let j=0;j<3;j++)c.batch.add(coneGeo,x,y+h*.6+j*h*.23,z,(1.5-j*.28)*scale,h*.65,(1.5-j*.28)*scale,color);
+    const kind=country.trees==='pine'?(r()>.15?'pine':'round'):country.trees==='palm'?(r()>.3?'palm':'round'):r()>.82?'pine':'round';
+    if(kind==='palm'){
+      // Tall curved trunk, a fan of fronds, two coconuts.
+      const lean=(r()-.5)*.5, th=h*1.35, tx=x+Math.sin(lean)*th*.5, tz=z;
+      c.batch.beam([x,y,z],[tx,y+th,tz],.22*scale,'#9b8965');
+      for(let k=0;k<4;k++)c.batch.add(torusGeo,x+Math.sin(lean)*th*(k+.5)/4.5,y+th*(k+.5)/4.5,z,.26*scale,.26*scale,.26*scale,'#8a7a5a',Math.PI/2);
+      for(let k=0;k<8;k++){const a=k*TAU/8+r()*.4,fl=2.6*scale,droop=.55+r()*.3;const cx=tx+Math.cos(a)*fl*.45,cz=tz+Math.sin(a)*fl*.45;c.batch.add(boxGeo,cx,y+th-.25*scale-Math.sin(droop)*fl*.25,cz,fl*.9,.08*scale,.55*scale,color,0,-a,0);c.batch.add(boxGeo,cx+Math.cos(a)*fl*.3,y+th-.6*scale-Math.sin(droop)*fl*.4,cz+Math.sin(a)*fl*.3,fl*.5,.07*scale,.4*scale,color,0,-a,droop*Math.sign(Math.cos(a)||1)*0);}
+      c.batch.ball(tx,y+th-.1*scale,tz,.35*scale,.3*scale,.35*scale,'#6f8a52');
+      c.batch.ball(tx+.3*scale,y+th-.4*scale,tz,.17*scale,.15*scale,.17*scale,'#8a6a4c');c.batch.ball(tx-.2*scale,y+th-.45*scale,tz+.25*scale,.17*scale,.15*scale,.17*scale,'#8a6a4c');
+      crown(tx,y+th-.1*scale,tz,1.9*scale,.7*scale,1.9*scale);
+      this.cylinderSolid(c,(x+tx)/2,y,z,.26*scale,th-.3,{climbable:true,tree,kind:'trunk'});
+      return;
+    }
+    if(kind==='pine'){
+      for(let j=0;j<3;j++){c.batch.add(coneGeo,x,y+h*.6+j*h*.23,z,(1.5-j*.28)*scale,h*.65,(1.5-j*.28)*scale,color);if(country.snow)c.batch.add(coneGeo,x,y+h*.6+j*h*.23+h*.07,z,(1.5-j*.28)*scale*.9,h*.52,(1.5-j*.28)*scale*.9,'#f0f3f6');}
       crown(x,y+h*.78,z,1.05*scale,h*.42,1.05*scale);
     }else{
       c.batch.beam([x,y+h*.5,z],[x+.8*scale,y+h*.88,z+.3*scale],.13*scale,'#9b8965');
@@ -650,7 +729,7 @@ export class World {
   makePark(c,x,z,r,index){
     const b=c.batch, id=`park:${c.key}:${index}`;
     c.parks.push({id,x,z,r:10,cx:c.cx,cz:c.cz});
-    b.box(x,.025,z,24,.1,24,'#8fa66b');
+    b.box(x,.025,z,24,.1,24,country.lawn);
     b.box(x,.085,z,3.2,.08,25,'#c2b79d');
     b.box(x,.086,z,25,.08,3.2,'#c2b79d');
     const px=x+4.5,pz=z-4.3,pr=3.4+r()*1.2;
@@ -683,6 +762,12 @@ export class World {
     this.bench(c,x-4.5,z+2.2,Math.PI/2);
     this.bench(c,x+3,z+7,0);
     this.lamp(c,x-2.3,z+8.5);
+    if(country.snow){ // a snowman, because somebody always builds one
+      const sx=x-7,sz=z+6,b=c.batch;b.ball(sx,.55,sz,.75,.6,.75,'#f4f6f8');b.ball(sx,1.4,sz,.55,.5,.55,'#f4f6f8');b.ball(sx,2.1,sz,.4,.38,.4,'#f4f6f8');
+      b.add(coneGeo,sx,2.1,sz+.5,.08,.4,.08,'#e2733f',Math.PI/2);for(const e of[-.14,.14])b.ball(sx+e,2.2,sz+.36,.04,.04,.04,'#2f3331');for(let k=0;k<3;k++)b.ball(sx,1.2+k*.22,sz+.52,.04,.04,.04,'#2f3331');
+      b.cyl(sx,2.5,sz,.3,.08,'#2f3331');b.cyl(sx,2.75,sz,.22,.45,'#2f3331');b.box(sx,1.75,sz,1.1,.14,.3,'#c9524a',.3);for(const e of[-1,1])b.beam([sx+e*.5,1.45,sz],[sx+e*1.2,1.9,sz+.2],.03,'#6d5a44');
+      this.cylinderSolid(c,sx,0,sz,.7,2.3,{climbable:true,kind:'snowman'});
+    }
     for(let j=0;j<26;j++){
       const fx=x-9+r()*5,fz=z-1+r()*10;
       b.ball(fx,.2,fz,.18,.23,.18,'#86a269');

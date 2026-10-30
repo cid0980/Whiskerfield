@@ -387,7 +387,7 @@ test('ponds, fountains, birds, and a camera that stays above the scenery', async
     g.teleport(f.x, 0, f.z + 2); g.setCamera(0); step(5); g.hold.y = -1; step(10); g.hold.jump = true; step(40); g.hold.y = 0; step(40);
     out.fountain = { y: g.player.pos.y, support: g.player.support?.kind, top: f.maxY };
     // Birds perch on scenery, mostly low, and flutter off when the cat gets close.
-    out.birds = { count: g.birds.list.length, perched: g.birds.list.filter(b => b.perch?.solid && ['perch', 'fly'].includes(b.state)).length, low: g.birds.list.filter(b => b.perch?.y < 3.4).length };
+    const small = g.birds.list.filter(b => !b.crow); out.birds = { count: small.length, perched: small.filter(b => b.perch?.solid && ['perch', 'fly'].includes(b.state)).length, low: small.filter(b => b.perch?.y < 3.4).length };
     let b = null; for (let i = 0; i < 900 && !b; i++) { g.step(1 / 60); b = g.birds.list.find(b => b.state === 'perch' && b.perch.y < 3 && b.group.position.distanceTo(g.player.pos) > 6); }
     g.teleport(b.group.position.x + .8, 0, b.group.position.z); step(100);
     out.startle = { state: b.state, startles: g.birds.startles, moved: b.group.position.distanceTo(new (b.group.position.constructor)(b.from.x, b.from.y, b.from.z)) };
@@ -537,7 +537,7 @@ test('fun: shinies can be picked up, things can be knocked over, and hats unlock
   await expect(page.locator('.hat-card.wearing strong')).toHaveText('Leaf');
 });
 
-test('out of town: a station with a train you can climb, allotments with a greenhouse, ducks that flee, crows up high', async ({ page }) => {
+test('out of town: a station with a canopy to sit on, allotments with a greenhouse, ducks that flee, crows up high', async ({ page }) => {
   await page.goto('/?test=1&seed=moss-424');
   await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
   const r = await page.evaluate(() => {
@@ -551,9 +551,11 @@ test('out of town: a station with a train you can climb, allotments with a green
     // Crows prefer roofs and chimneys.
     const crows = g.birds.list.filter(b => b.crow); out.crows = { count: crows.length, high: crows.filter(b => b.perch.y >= 3.4).length };
     // The station lot (seed moss-424): a platform step, a climbable engine, and a landmark that can be discovered.
-    g.teleport(-460, .3, 355); step(40); const st = g.world.landmarks.find(l => l.kind === 'station');
+    // The railway station (seed moss-424, the line west of town): staff and passengers on the platform, a canopy to sit on.
+    g.teleport(-380, .3, 290); step(70); const st = g.world.landmarks.find(l => l.kind === 'station');
     out.station = { found: !!st, name: st?.name, people: g.people.list.filter(p => Math.hypot(p.x - st.x, p.z - st.z) < 20).length };
-    g.teleport(st.x + 7.5, 4, st.z + 2); step(40); out.station.onTrain = g.player.pos.y;
+    const canopy = g.world.colliders.find(s => s.kind === 'roof' && s.shape === 'box' && Math.hypot((s.minX + s.maxX) / 2 - st.x, (s.minZ + s.maxZ) / 2 - st.z) < 12);
+    g.teleport((canopy.minX + canopy.maxX) / 2, canopy.maxY + .3, (canopy.minZ + canopy.maxZ) / 2); step(40); out.station.onCanopy = g.player.pos.y;
     g.teleport(-448, .3, -215); step(40); const al = g.world.landmarks.find(l => l.kind === 'allotments');
     out.allot = { found: !!al, name: al?.name };
     g.teleport(al.x - 6.5, .3, al.z + 9); step(40); out.allot.insideGreenhouse = g.player.pos.y;
@@ -564,6 +566,51 @@ test('out of town: a station with a train you can climb, allotments with a green
   expect(r.ducks.moved).toBeGreaterThan(.8); expect(r.ducks.startles).toBeGreaterThan(0); expect(r.ducks.nearPond).toBe(true);
   expect(r.crows.count).toBeGreaterThanOrEqual(2); expect(r.crows.high).toBeGreaterThanOrEqual(1);
   expect(r.station.found).toBe(true); expect(r.station.name).toBe('the station'); expect(r.station.people).toBeGreaterThanOrEqual(3);
-  expect(r.station.onTrain).toBeGreaterThan(2.5);
+  expect(r.station.onCanopy).toBeGreaterThan(3.5);
   expect(r.allot.found).toBe(true); expect(r.allot.insideGreenhouse).toBeLessThan(.6); expect(r.allot.onGreenhouseRoof).toBeGreaterThan(2);
+});
+
+test('indoors and abroad: furnished houses, a works floor, a train you can ride, and a flight to another country', async ({ page }) => {
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); }, out = {};
+    g.start();
+    // Every ordinary house has a ground floor you can walk into through the front door.
+    const houses = g.world.landmarks.filter(l => l.kind === 'house');
+    out.houses = houses.length; out.kits = new Set(houses.flatMap(h => h.kits)).size;
+    const h = houses.find(l => Math.hypot(l.x - 1, l.z - 7) < 40) || houses[0];
+    g.teleport(h.x, .6, h.z); step(40); out.inHouse = { y: +g.player.pos.y.toFixed(2), support: g.getState().support, inside: g.player.pos.x > h.inside.minX && g.player.pos.x < h.inside.maxX };
+    const before = g.getState().places; g.discover(); out.houseFound = g.getState().places > before;
+    // Walk at a wall: the cat must be stopped, not pass through.
+    g.teleport(h.inside.minX + 1, .6, h.z); step(20); g.hold.x = -1; g.setCamera(0); step(90); g.hold.x = 0; out.wallStop = g.player.pos.x > h.inside.minX - .5;
+    // Furniture is solid: there is at least one solid piece in every house interior.
+    out.furniture = g.physics.query(h.x, h.z, 6).filter(s => ['sofa', 'table', 'bed', 'counter', 'desk', 'shelf', 'chair', 'bench', 'oven', 'wardrobe', 'piano'].includes(s.kind)).length;
+    // Works floor and lobby exist as places.
+    out.kinds = [...new Set(g.world.landmarks.map(l => l.kind))];
+    // Train: wait at the station on the first line east of the square and ride it.
+    g.teleport(50, 1.3, -16.5); step(30); const t = g.train; let arrived = false;
+    for (let i = 0; i < 60 * 70 && !arrived; i++) { g.step(1 / 60); if (t.state === 'stop' && Math.abs(t.z + 16.5) < .5) arrived = true; }
+    out.trainArrived = arrived;
+    g.teleport(63, 4.3, -13.3); step(40); out.onTrain = g.getState().support; const z0 = g.player.pos.z; step(60 * 14); out.carried = +(g.player.pos.z - z0).toFixed(1);
+    // Airport: up the steps, into the cabin, the departures card appears; fly to Sunmarch.
+    g.teleport(146.1, .3, 12); step(40); g.hold.y = -1; g.setCamera(0); step(60 * 6); g.hold.y = 0; step(20);
+    out.boarded = { support: g.getState().support, modal: g.getState().modal, y: +g.player.pos.y.toFixed(2) };
+    out.flightOk = g.board('sunmarch'); const phases = []; let last = null;
+    for (let i = 0; i < 60 * 50 && g.flight.active; i++) { g.step(1 / 60); if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); } }
+    out.phases = phases; out.country = g.country; out.landedNear = Math.hypot(g.player.pos.x - 146.1, g.player.pos.z - 9.6) < 2; out.catVisible = g.cat.root.visible;
+    out.seedLabel = document.getElementById('seed-label').textContent; out.airportsAbroad = g.world.airports.length; out.planesAbroad = g.planes.list.size;
+    out.saved = JSON.parse(localStorage.getItem('whiskerfield.journey.v1')).country;
+    return out;
+  });
+  expect(r.houses).toBeGreaterThanOrEqual(6); expect(r.kits).toBeGreaterThanOrEqual(4);
+  expect(r.inHouse.support).toBe('floor'); expect(r.inHouse.y).toBeCloseTo(.42, 1); expect(r.inHouse.inside).toBe(true); expect(r.houseFound).toBe(true);
+  expect(r.wallStop).toBe(true); expect(r.furniture).toBeGreaterThanOrEqual(3);
+  expect(r.trainArrived).toBe(true); expect(r.onTrain).toBe('car'); expect(r.carried).toBeGreaterThan(5);
+  expect(r.boarded.modal).toBe('flight-modal'); expect(r.boarded.support).toBe('floor');
+  expect(r.flightOk).toBe(true); expect(r.phases).toEqual(['board', 'taxi', 'roll', 'climb', 'cloud', 'descend', 'rollout', 'stand', null]);
+  expect(r.country).toBe('sunmarch'); expect(r.landedNear).toBe(true); expect(r.catVisible).toBe(true); expect(r.seedLabel).toContain('Sunmarch');
+  expect(r.airportsAbroad).toBeGreaterThanOrEqual(1); expect(r.planesAbroad).toBeGreaterThanOrEqual(1); expect(r.saved).toBe('sunmarch');
+  await page.reload(); await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  expect(await page.evaluate(() => window.__whiskerfield.country)).toBe('sunmarch');
 });

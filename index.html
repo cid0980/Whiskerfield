@@ -98,6 +98,7 @@
     <div class="error-screen" id="error-screen" hidden><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>Something went wrong</h2><p id="error-message">This game needs WebGL. Try an up-to-date Chrome, Edge, Firefox, or Safari browser with hardware acceleration enabled.</p><button class="primary-button" onclick="location.reload()">Try again</button></div>
   </main>
 
+  <div id="fade" aria-hidden="true" hidden></div>
   <div class="modal-backdrop" id="modal-backdrop" hidden>
     <section class="modal" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close instructions"><svg class="icon"><use href="#i-close"/></svg></button>
@@ -133,6 +134,14 @@
       <p>Shinies are small things that glint: bottle caps, marbles, keys. They sit on rooftops, ledges and pavements. Each hat unlocks at a number of shinies found. You have found <b id="hat-found">0</b>.</p>
       <div class="hat-list" id="hat-list"></div>
       <button class="primary-button full-width" data-close>Done</button>
+    </section>
+
+    <section class="modal flight-modal" id="flight-modal" role="dialog" aria-modal="true" aria-labelledby="flight-title" hidden>
+      <button class="modal-close icon-button" data-close aria-label="Not today"><svg class="icon"><use href="#i-close"/></svg></button>
+      <h2 id="flight-title">Departures</h2>
+      <p>You are on board at <b id="flight-from">Whiskerfield</b>. The plane goes wherever you say. Your hat comes with you; what you have found here waits for you if you come back.</p>
+      <div class="flight-list" id="flight-list"></div>
+      <button class="secondary-button full-width" data-close>Stay a while longer</button>
     </section>
 
     <section class="modal map-modal" id="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-title" hidden>

@@ -292,8 +292,8 @@ function createUI() {
   });
   canvas.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId) || modal) return; const p = pointers.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .02, 3.2, 14); lastPinch = d; }
-    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, .16, 1.15); }
+    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, 3.2, mobile ? 9 : 14); lastPinch = d; }
+    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, .16, mobile ? .95 : 1.15); }
     cameraInputTimer = 1.6;
   });
   const release = e => pointers.delete(e.pointerId); canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release); canvas.addEventListener('lostpointercapture', release);
@@ -507,8 +507,20 @@ function updateAtmosphere(dt) {
   for (const cloud of clouds) { cloud.position.x += dt * .18; if (cloud.position.x - p.x > 150) cloud.position.x -= 300; if (cloud.position.x - p.x < -150) cloud.position.x += 300; if (cloud.position.z - p.z > 150) cloud.position.z -= 300; if (cloud.position.z - p.z < -150) cloud.position.z += 300; }
 }
 
+// A line of speech only shows when the speaker can actually be seen: not through a roof or a wall.
+const rayFrom = new THREE.Vector3(), rayDir = new THREE.Vector3();
+function speakerVisible(p) {
+  rayFrom.copy(camera.position); rayDir.set(p.x, p.y + p.H * .8, p.z).sub(rayFrom);
+  const len = rayDir.length(), mx = (rayFrom.x + p.x) / 2, mz = (rayFrom.z + p.z) / 2;
+  for (const s of physics.query(mx, mz, len / 2 + 1)) {
+    if (s.shape === 'ellipsoid' || s.person || s.auto || (s.shape === 'cylinder') || s.maxY - s.minY < .3) continue;
+    if (s.kind !== 'wall' && s.kind !== 'roof' && s.kind !== 'floor') continue;
+    if (rayBox(rayFrom, rayDir, s, 0) < .985) return false;
+  }
+  return true;
+}
 function updateBubble() {
-  const el = $('bubble'), speaker = started && !modal ? people.speaker(player.pos) : null;
+  const el = $('bubble'), speaker = started && !modal ? people.speaker(player.pos, speakerVisible) : null;
   if (!speaker) { el.classList.remove('show'); return; }
   bubbleVec.set(speaker.x, speaker.y + speaker.H + .22, speaker.z).project(camera);
   if (bubbleVec.z > 1 || Math.abs(bubbleVec.x) > 1.3 || Math.abs(bubbleVec.y) > 1.3) { el.classList.remove('show'); return; }

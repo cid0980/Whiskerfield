@@ -473,7 +473,10 @@ export class World {
 
   gable(c, b, rise, color, ridgeX) {
     const w = b.w / 2 + .55, d = b.d / 2 + .55;
-    let verts = [[-w,0,-d],[w,0,-d],[w,0,d],[-w,0,d],[0,rise,-d],[0,rise,d]];
+    // Ridge along z by default; for ridgeX the slopes run along z and the ridge along x, so the
+    // extents swap before the axes do (otherwise a non-square roof ends up rotated on its body).
+    const a = ridgeX ? d : w, e = ridgeX ? w : d;
+    let verts = [[-a,0,-e],[a,0,-e],[a,0,e],[-a,0,e],[0,rise,-e],[0,rise,e]];
     if (ridgeX) verts = verts.map(([x,y,z]) => [z,y,x]);
     const tris = [[0,3,5],[0,5,4],[4,5,2],[4,2,1]];
     const p = [];

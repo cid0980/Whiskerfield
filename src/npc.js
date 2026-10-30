@@ -354,10 +354,10 @@ export class People {
     }
     for (const p of this.list) p.update(dt, cat, catSpeed, this.list);
   }
-  speaker(cat) {
-    let best = null, bestD = 18;
-    for (const p of this.list) if (p.line) { const d = Math.hypot(p.x - cat.x, p.z - cat.z); if (d < bestD) { bestD = d; best = p; } }
-    return best;
+  speaker(cat, visible = null) {
+    const talking = this.list.filter(p => p.line).map(p => [Math.hypot(p.x - cat.x, p.z - cat.z), p]).filter(([d]) => d < 18).sort((a, b) => a[0] - b[0]);
+    for (const [, p] of talking) if (!visible || visible(p)) return p;
+    return null;
   }
   dispose() { for (const p of this.list) { this.scene.remove(p.group); p.dispose(); } this.list = []; this.workers.clear(); this.physics.dynamic = []; }
 }

@@ -68,6 +68,7 @@ styles.css              Responsive HUD, menus, and touch controls
 src/main.js             Game loop, camera, input, HUD, saves, PWA setup
 src/physics.js          Cat movement, collisions, climbing, perching, mantling
 src/npc.js              Roaming neighbours who stop to fuss the cat
+src/birds.js            Perching garden birds that scatter when the cat approaches
 src/platform.js         Fullscreen, orientation lock, and install helpers
 src/world.js            Seeded procedural town, batching, colliders, map data
 src/cat.js              Animated low-poly cat
@@ -125,6 +126,13 @@ MIT licensed. See `LICENSE`.
 - Each neighbour has their own heart sprite (no flicker when two greet you at once).
 - Saves are change-driven rather than rewritten every 5 s while idle.
 - Sensitivity slider shows a live percentage; the WebGL error screen shows its cat icon; the screen stays awake while playing (Screen Wake Lock, where supported).
+
+## Version 1.2.2 fixes
+
+- Camera never sinks to ground level or inside scenery: a higher minimum pitch, a floor under the eye, tall things pull it closer and low things (fountain rims, pond stones) lift it so the cat stays in view.
+- The fountain's colliders follow its real shape (basin rim, column, top dish) — no more hovering above it.
+- Cats don't walk into ponds: the water's edge stops them; a deliberate jump in means a slow wade back out.
+- Little garden birds (budgie yellow, sky blue, green, white) perch on lamps, benches, sills, branches and chimneys, and flutter off with a chirp when the cat comes close.
 
 ## GitHub Pages
 

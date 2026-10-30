@@ -241,7 +241,18 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
       if (ahead.y > p.pos.y && ahead.y <= old.y + CAT.step) stepY = ahead.y;
     }
     p.pos.set(nx, stepY, nz);
-    const contacts = physics.resolve(p.pos, CAT.radius, CAT.height);
+    let contacts = physics.resolve(p.pos, CAT.radius, CAT.height);
+    // Cats do not walk into ponds: the water's edge acts like a wall from the outside.
+    // (A cat that lands in the water after a jump can still wade back out.)
+    if (p.grounded && p.pos.y < .2 && !physics.world.inWater(old.x, old.z)) {
+      const w = physics.world.inWater(p.pos.x, p.pos.z);
+      if (w) {
+        const dx = p.pos.x - w.x, dz = p.pos.z - w.z, d = Math.hypot(dx, dz) || 1e-6, rr = w.r + CAT.radius * .5;
+        p.pos.x = w.x + dx / d * rr; p.pos.z = w.z + dz / d * rr;
+        const into = p.vx * (dx / d) + p.vz * (dz / d); if (into < 0) { p.vx -= into * dx / d; p.vz -= into * dz / d; }
+        contacts = (contacts || 0) + 1;
+      }
+    }
     if (contacts) {
       // Remove only the velocity going into the surface; sliding stays fluid.
       const dx = p.pos.x - nx, dz = p.pos.z - nz, len = Math.hypot(dx, dz);

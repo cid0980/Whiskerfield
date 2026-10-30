@@ -4,6 +4,7 @@ import { Cat } from './cat.js';
 import { NeighborhoodAudio } from './audio.js';
 import { CAT, PhysicsWorld, createPlayer, stepPlayer } from './physics.js';
 import { People } from './npc.js';
+import { Birds } from './birds.js';
 import * as platform from './platform.js';
 
 const $ = id => document.getElementById(id);
@@ -33,7 +34,7 @@ const visitedRoofs = new Set(Array.isArray(saved?.roofs) ? saved.roofs.filter(v 
 const visitedGardens = new Set(Array.isArray(saved?.gardens) ? saved.gardens.filter(v => typeof v === 'string').slice(-10000) : []);
 let friendsMade = Number.isFinite(saved?.friends) ? saved.friends : 0;
 const audio = new NeighborhoodAudio(); audio.enabled = settings.audio; audio.volume = settings.volume;
-let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [];
+let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [], birds;
 let started = false, resting = false, modal = null, previousFocus = null, ready = false, storageWarning = false;
 let cameraYaw = Number.isFinite(saved?.cameraYaw) ? saved.cameraYaw : .56, cameraPitch = .34, cameraDistance = mobile ? 5 : 5.4;
 let cameraYawTarget = cameraYaw, cameraPitchTarget = cameraPitch, cameraDistanceTarget = cameraDistance, cameraInputTimer = 0;
@@ -142,7 +143,7 @@ function init() {
   requestAnimationFrame(() => { requestAnimationFrame(() => { $('loading').classList.add('done'); setTimeout(() => $('loading').hidden = true, 700); }); });
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
-    player, get world() { return world; }, get people() { return people; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); }, discover: checkDiscoveries, platformCalls: platform.calls,
+    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); }, discover: checkDiscoveries, platformCalls: platform.calls,
     getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, friends: friendsMade, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
     teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
@@ -156,6 +157,9 @@ function createWorld(seed) {
   people = new People(scene, physics, mobile ? 9 : 14, seed);
   people.onGreet = () => { friendsMade++; updateCounts(); audio.greet(); if (friendsMade === 1) toast('A new friend. Neighbours love a visiting cat.', 'heart', 3600); if (friendsMade % 10 === 0) save(); };
   people.spawnAll(player.pos);
+  birds = new Birds(scene, world, mobile ? 8 : 14);
+  birds.onStartle = () => { birds.startles++; if (Math.random() < .5) audio.tweet(); };
+  birds.spawnAll(player.pos);
 }
 
 function createAtmosphere() {
@@ -247,7 +251,7 @@ function createUI() {
   canvas.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId) || modal) return; const p = pointers.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .02, 3.2, 14); lastPinch = d; }
-    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, .08, 1.15); }
+    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, .16, 1.15); }
     cameraInputTimer = 1.6;
   });
   const release = e => pointers.delete(e.pointerId); canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release); canvas.addEventListener('lostpointercapture', release);
@@ -275,7 +279,7 @@ function markInstalled() { installed = true; installPrompt = null; platform.reme
 
 function newWorld() {
   stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), friends: friendsMade, started });
-  people.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); friendsMade = 0;
+  people.dispose(); birds.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); friendsMade = 0;
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed()); updateCounts(); $('seed-label').textContent = 'Seed: ' + world.seedText; closeModal(); save();
@@ -323,7 +327,7 @@ function pollGamepad(dt) {
   const dead = v => Math.abs(v) < .16 ? 0 : (Math.abs(v) - .16) / .84 * Math.sign(v);
   gamepadMoveX = dead(pad.axes[0] || 0); gamepadMoveY = dead(pad.axes[1] || 0);
   const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
-  if (rx || ry) { cameraYawTarget -= rx * 2.6 * dt; cameraPitchTarget = clamp(cameraPitchTarget + ry * 1.8 * dt, .08, 1.15); cameraInputTimer = 1.6; }
+  if (rx || ry) { cameraYawTarget -= rx * 2.6 * dt; cameraPitchTarget = clamp(cameraPitchTarget + ry * 1.8 * dt, .16, 1.15); cameraInputTimer = 1.6; }
   const b = i => !!pad.buttons[i]?.pressed;
   if (b(10) && !prevPadButtons[10]) touchRun = !touchRun;
   gamepadRun = b(6) || b(7); gamepadClimb = b(1) || b(5) || b(4);
@@ -356,15 +360,27 @@ function updateCamera(dt, instant = false) {
   if (instant) cameraTarget.copy(desiredTarget); else cameraTarget.lerp(desiredTarget, 1 - Math.exp(-10 * dt));
   const pitch = isWelcome ? .3 : cameraPitch, distance = isWelcome ? (narrow ? 9 : 11) : cameraDistance;
   cameraDesired.set(Math.sin(cameraYaw) * Math.cos(pitch) * distance, Math.sin(pitch) * distance, Math.cos(cameraYaw) * Math.cos(pitch) * distance);
-  let allowed = 1;
+  let allowed = 1, needY = -Infinity;
   if (!isWelcome) {
     for (const s of physics.query(player.pos.x, player.pos.z, distance + 1.5)) {
-      if (s.shape === 'ellipsoid' || s.shape === 'cylinder' || s.maxY - s.minY < 1.2 || s.person) continue;
-      allowed = Math.min(allowed, rayBox(cameraTarget, cameraDesired, s));
+      if (s.shape === 'ellipsoid' || s.person || (s.shape === 'cylinder' && s.r < .2) || s.maxY - s.minY < .3) continue;
+      const t = rayBox(cameraTarget, cameraDesired, s);
+      if (t >= 1) continue;
+      // Tall things block the camera (walls, roofs, crates, fountain columns, trunks) and pull it closer;
+      // low things (fountain rims, pond stones, benches) just lift the camera so it can see over them.
+      if (s.maxY - s.minY >= .7) allowed = Math.min(allowed, t);
+      else if (t > .05) needY = Math.max(needY, cameraTarget.y + (s.maxY + .22 - cameraTarget.y) / t);
     }
   }
   if (allowed < 1) cameraDesired.multiplyScalar(Math.max(.18, allowed - .3 / distance));
   cameraDesired.add(cameraTarget);
+  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * .9);
+  // Never let the camera sink into the ground, a pond, a fountain rim, or a bench top.
+  if (!isWelcome) {
+    const floor = physics.highest(cameraDesired.x, cameraDesired.z, cameraDesired.y);
+    const minY = Math.max(0, floor) + .42;
+    if (cameraDesired.y < minY) cameraDesired.y = minY;
+  }
   if (instant) camera.position.copy(cameraDesired); else camera.position.lerp(cameraDesired, 1 - Math.exp(-(allowed < 1 ? 16 : 9) * dt));
   camera.lookAt(cameraTarget);
   const targetFov = isWelcome ? 46 : 50 + player.runBlend * 6;
@@ -504,7 +520,7 @@ function loop(now) {
   cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
   const groundY = physics.support(player.pos.x, player.pos.z, player.pos.y + .05).y;
   cat.update(dt, time, { speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, resting, vy: player.vy, turnRate: player.turnRate, accel: player.accel, landImpact: player.landImpact, runBlend: player.runBlend }, groundY, settings.reducedMotion);
-  people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera);
+  people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed);
   if (!started && !settings.reducedMotion) cameraYawTarget += dt * .03;
   updateCamera(dt); updateAtmosphere(dt); audio.update(dt); updateBubble();
   ground.position.x = player.pos.x; ground.position.z = player.pos.z;

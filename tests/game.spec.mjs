@@ -366,3 +366,46 @@ test('housekeeping: seeds, map drag, adaptive quality, hearts, saves, labels, wa
   expect(misc.wake).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('ponds, fountains, birds, and a camera that stays above the scenery', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {}, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    // The cat will not walk into the pond, even through a gap in the stones; a jump in means a wade back out.
+    const w = g.world.water[0], a = (3.5 / 18) * Math.PI * 2;
+    g.teleport(w.x + Math.cos(a) * (w.r + 2), 0, w.z + Math.sin(a) * (w.r + 2)); step(5);
+    g.setCamera(Math.atan2(Math.cos(a), Math.sin(a))); g.hold.y = -1; step(150); g.hold.y = 0;
+    out.edge = { d: Math.hypot(g.player.pos.x - w.x, g.player.pos.z - w.z), r: w.r, wet: !!g.world.inWater(g.player.pos.x, g.player.pos.z) };
+    g.hold.y = -1; step(3); g.hold.jump = true; g.hold.jumpHeld = true; step(50); g.hold.jumpHeld = false; step(30);
+    out.wade = { wet: !!g.world.inWater(g.player.pos.x, g.player.pos.z), speed: g.player.speed, y: g.player.pos.y };
+    g.hold.y = 1; step(200); g.hold.y = 0; out.out = !g.world.inWater(g.player.pos.x, g.player.pos.z);
+    // The fountain's colliders match its shape: the cat sits on the real rim, not in the air above it.
+    const f = g.world.colliders.find(s => s.kind === 'fountain' && s.maxY < .6);
+    g.teleport(f.x, 0, f.z + 2); g.setCamera(0); step(5); g.hold.y = -1; step(10); g.hold.jump = true; step(40); g.hold.y = 0; step(40);
+    out.fountain = { y: g.player.pos.y, support: g.player.support?.kind, top: f.maxY };
+    // Birds perch on scenery, mostly low, and flutter off when the cat gets close.
+    out.birds = { count: g.birds.list.length, perched: g.birds.list.filter(b => b.perch?.solid && ['perch', 'fly'].includes(b.state)).length, low: g.birds.list.filter(b => b.perch?.y < 3.4).length };
+    let b = null; for (let i = 0; i < 900 && !b; i++) { g.step(1 / 60); b = g.birds.list.find(b => b.state === 'perch' && b.perch.y < 3 && b.group.position.distanceTo(g.player.pos) > 6); }
+    g.teleport(b.group.position.x + .8, 0, b.group.position.z); step(100);
+    out.startle = { state: b.state, startles: g.birds.startles, moved: b.group.position.distanceTo(new (b.group.position.constructor)(b.from.x, b.from.y, b.from.z)) };
+    return out;
+  });
+  expect(r.edge.wet).toBe(false);
+  expect(r.edge.d).toBeLessThan(r.edge.r + 0.3);
+  expect(r.wade.wet).toBe(true);
+  expect(r.wade.speed).toBeLessThan(6);
+  expect(r.out).toBe(true);
+  expect(r.fountain.support).toBe('fountain');
+  expect(Math.abs(r.fountain.y - r.fountain.top)).toBeLessThan(0.02);
+  expect(r.birds.count).toBeGreaterThanOrEqual(8);
+  expect(r.birds.perched).toBe(r.birds.count);
+  expect(r.birds.low).toBeGreaterThan(r.birds.count / 2);
+  expect(r.startle.startles).toBeGreaterThanOrEqual(1);
+  // Camera: the lowest allowed pitch never puts the eye into the ground or inside a fountain.
+  await page.evaluate(() => { const g = window.__whiskerfield; const f = g.world.colliders.find(s => s.kind === 'fountain' && s.maxY < .6); g.teleport(f.x, 0, f.z + 2.2); g.setCamera(Math.PI + .4, .16, 4); });
+  await page.waitForTimeout(2500);
+  const cam = await page.evaluate(() => { const g = window.__whiskerfield; const f = g.world.colliders.find(s => s.kind === 'fountain' && s.maxY < .6); const c = g.camera.position; return { y: c.y, inFountain: Math.hypot(c.x - f.x, c.z - f.z) < 1.35 && c.y < f.maxY + .4 }; });
+  expect(cam.y).toBeGreaterThan(0.4);
+  expect(cam.inFountain).toBe(false);
+  expect(errors).toEqual([]);
+});

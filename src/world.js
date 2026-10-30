@@ -492,7 +492,7 @@ export class World {
       b.box(p[0],y+.95,p[1]+.3,.12,1.1,.12,'#73816a',angle);
     }
     for(let j=0;j<3;j++){const p=at(0,.32);b.box(p[0],y+.9+j*.19,p[1],2.6,.13,.1,'#b49b73',angle);}
-    this.solid(c,x,y+.64,z,Math.abs(co)*2.6+Math.abs(si)*.75,.18,Math.abs(si)*2.6+Math.abs(co)*.75,{climbable:false});
+    this.solid(c,x,y+.64,z,Math.abs(co)*2.6+Math.abs(si)*.75,.18,Math.abs(si)*2.6+Math.abs(co)*.75,{climbable:false,kind:'bench'});
   }
 
   lamp(c,x,z){
@@ -623,7 +623,10 @@ export class World {
     b.add(taperedGeo,fx,.95,fz,.25,1.1,.25,'#c9c9ad');
     b.cyl(fx,1.48,fz,.7,.2,'#d7d3b6');
     b.ball(fx,1.67,fz,.18,.2,.18,'#c1c5a5');
-    this.solid(c,fx,.4,fz,2.4,.8,2.4,{climbable:false});
+    // Colliders follow the fountain's real shape: basin rim to sit on, slim column, and a top dish to leap onto.
+    this.cylinderSolid(c,fx,0,fz,1.35,.53,{climbable:false,kind:'fountain'});
+    this.cylinderSolid(c,fx,.53,fz,.27,.85,{climbable:false,kind:'fountain'});
+    this.cylinderSolid(c,fx,1.38,fz,.7,.2,{climbable:false,kind:'fountain'});
     this.bench(c,3.8,6.5,-.4);
     this.pot(c,4.5,1,r,1);
     this.tree(c,-7.5,-4.5,r,.9);

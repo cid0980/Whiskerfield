@@ -63,7 +63,7 @@ function save() {
   if (!world) return;
   saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: hatId, settings, started })); }
-  catch { if (!storageWarning) { storageWarning = true; toast('This browser can’t save your journey. Try leaving private browsing.', 'note', 5000); } }
+  catch { if (!storageWarning) { storageWarning = true; toast('Saving is blocked in this browser (private mode?). Progress will not be kept.', 'note', 5000); } }
 }
 // One quiet line at the top of the screen; never a panel over the world.
 function toast(text, kind = 'sun', duration = 3200) {
@@ -109,14 +109,14 @@ function start() {
   $('welcome').setAttribute('aria-hidden', 'true'); $('welcome').inert = true;
   $('world').focus({ preventScroll: true }); if (settings.audio) audio.start(); save();
   if (settings.immersive) platform.goImmersive().then(syncOrientation);
-  toast(saved?.started ? 'There you are. Your little world was waiting.' : 'The afternoon is yours. Find a rooftop or a friendly neighbour.', 'sun', 4200);
+  toast(saved?.started ? 'Welcome back. You are where you left off.' : 'Try a roof first. Hold E at a wall, or jump at it and keep pushing.', 'sun', 4200);
 }
 function toggleRest() {
   if (!started || modal) return;
-  if (!player.grounded) { toast('Paws on the ground first.', 'note', 2200); return; }
+  if (!player.grounded) { toast('You can only nap on the ground.', 'note', 2200); return; }
   resting = !resting; clearInput(); document.body.classList.toggle('resting', resting);
   $('rest-button').setAttribute('aria-pressed', String(resting));
-  if (resting) { toast('This spot feels like home. Move whenever you’re ready.', 'moon', 2600); audio.purr(); }
+  if (resting) { toast('Napping. Move to get up.', 'moon', 2600); audio.purr(); }
 }
 function syncOrientation() {
   const needRotate = started && platform.phoneLike() && platform.isPortrait() && !portraitOk;
@@ -161,7 +161,7 @@ function createWorld(seed) {
   world = new World(scene, seed); world.radius = mobile ? 1 : 2; world.update(player.pos, mobile ? 5 : 9);
   physics = new PhysicsWorld(world);
   people = new People(scene, physics, mobile ? 9 : 14, seed);
-  people.onGreet = () => { friendsMade++; updateCounts(); audio.greet(); if (friendsMade === 1) toast('A new friend. Neighbours love a visiting cat.', 'heart', 3600); if (friendsMade % 10 === 0) save(); };
+  people.onGreet = () => { friendsMade++; updateCounts(); audio.greet(); if (friendsMade === 1) toast('Your first hello. People remember a friendly cat.', 'heart', 3600); if (friendsMade % 10 === 0) save(); };
   people.spawnAll(player.pos);
   birds = new Birds(scene, world, mobile ? 8 : 14);
   birds.onStartle = () => { birds.startles++; if (Math.random() < .5) audio.tweet(); };
@@ -247,7 +247,7 @@ function createUI() {
   $('install-now-button').addEventListener('click', async () => {
     if (installPrompt) {
       const p = installPrompt; installPrompt = null;
-      try { await p.prompt(); const choice = await p.userChoice; if (choice.outcome === 'accepted') { markInstalled(); toast('Whiskerfield is now on your device.', 'heart'); } else syncInstall(); }
+      try { await p.prompt(); const choice = await p.userChoice; if (choice.outcome === 'accepted') { markInstalled(); toast('Installed.', 'heart'); } else syncInstall(); }
       catch { installPrompt = null; syncInstall(); }
     } else closeModal();
   });
@@ -283,7 +283,7 @@ function createUI() {
   window.addEventListener('resize', resize);
   screen.orientation?.addEventListener?.('change', resize);
   document.addEventListener('fullscreenchange', () => { if (!platform.isFullscreen()) platform.unlockOrientation(); syncOrientation(); });
-  $('world').addEventListener('webglcontextlost', e => { e.preventDefault(); save(); $('error-message').textContent = 'The graphics took a little catnap. Reload to return to your saved spot.'; $('error-screen').hidden = false; });
+  $('world').addEventListener('webglcontextlost', e => { e.preventDefault(); save(); $('error-message').textContent = 'The graphics context was lost. Reload to continue from your saved spot.'; $('error-screen').hidden = false; });
   const canvas = $('world');
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
@@ -326,7 +326,7 @@ function newWorld() {
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed()); updateCounts(); $('seed-label').textContent = 'Seed: ' + world.seedText; closeModal(); save();
   document.body.classList.remove('resting'); $('rest-button').setAttribute('aria-pressed', 'false');
-  toast('A fresh little beginning. New streets, new rooftops, the same curious cat.', 'leaf');
+  toast('New town. Same cat.', 'leaf');
 }
 
 // Fixed-rate physics (90 Hz substeps) so a slow phone and a fast monitor move the cat identically.
@@ -438,11 +438,11 @@ const PLACE_LINES = {
   market: () => 'Market day. Mind the stallholders’ feet.',
   works: () => 'The old works. Something in there is still turning.',
   warehouse: () => 'The depot. Pallets make excellent stairs.',
-  tower: () => 'Top of the tower. The whole town, and the wind in your fur.',
-  playground: () => 'The parkour park. Poles, beams, a slide — and a trampoline.',
-  cafe: () => 'Inside the café. There’s a cat bed in the corner, obviously.',
+  tower: () => 'Top of the tower. You can see the whole district.',
+  playground: () => 'The playground. Beams, a climbing frame, a slide, a trampoline.',
+  cafe: () => 'Inside the café.',
   shop: () => 'The little grocer. Please do not knock over the tins.',
-  home: () => 'Somebody’s living room. Act like you live here.'
+  home: () => 'Somebody’s living room.'
 };
 function checkDiscoveries() {
   const p = player.pos;
@@ -452,12 +452,12 @@ function checkDiscoveries() {
     if (player.grounded && onTop && p.y >= b.h - .15 && Math.abs(p.x - b.x) < b.w / 2 + .3 && Math.abs(p.z - b.z) < b.d / 2 + .3) {
       visitedRoofs.add(b.id); updateCounts(); burst(); audio.discovery();
       const n = visitedRoofs.size;
-      toast(n === 1 ? 'Your first rooftop. The town looks softer from up here.' : n % 5 === 0 ? `${n} rooftops. So many afternoons.` : 'A new rooftop.', 'sun', n === 1 ? 3600 : 2200); save(); break;
+      toast(n === 1 ? 'First rooftop. Roofs connect most of the town.' : n % 5 === 0 ? `${n} rooftops.` : 'New rooftop.', 'sun', n === 1 ? 3600 : 2200); save(); break;
     }
   }
   for (const park of world.parks) {
     if (!visitedGardens.has(park.id) && p.y < 1.5 && (p.x - park.x) ** 2 + (p.z - park.z) ** 2 < 81) {
-      visitedGardens.add(park.id); updateCounts(); audio.discovery(); burst(); toast('A quiet garden discovered.', 'leaf', 2600); save(); break;
+      visitedGardens.add(park.id); updateCounts(); audio.discovery(); burst(); toast('A park.', 'leaf', 2600); save(); break;
     }
   }
   for (const place of world.landmarks) {
@@ -575,7 +575,7 @@ function adaptQuality(frameMs) {
   else slowTime = Math.max(0, slowTime - frameMs / 2000);
   if (slowTime > 2.5 && qualityLevel < 4) {
     slowTime = 0; smoothTime = 0; qualityLevel++; applyQuality();
-    if (!qualityToasted) { qualityToasted = true; toast('Softening the picture a little so the cat stays quick.', 'note', 3200); }
+    if (!qualityToasted) { qualityToasted = true; toast('Softening the picture to keep the frame rate up.', 'note', 3200); }
   } else if (smoothTime > 8 && qualityLevel > 0) {
     smoothTime = 0; slowTime = 0; qualityLevel--; applyQuality(); frameAvg = 16;
   }
@@ -612,7 +612,7 @@ function loop(now) {
 }
 
 function syncInstall() {
-  const label = installed ? 'Installed' : offlineReady ? 'Offline ready' : 'Getting cozy…';
+  const label = installed ? 'Installed' : offlineReady ? 'Offline ready' : 'Loading…';
   $('offline-label').textContent = !navigator.onLine && offlineReady ? 'Playing offline' : label; $('offline-status').classList.toggle('ready', offlineReady);
   $('install-ready').querySelector('span').textContent = offlineReady ? 'All tucked in. This world is ready to play offline.' : 'Getting the offline files ready…';
   // The install button only appears when installing is actually possible, and never once installed.
@@ -633,7 +633,7 @@ async function setupPWA() {
     swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     swRegistration.addEventListener('updatefound', () => {
       const worker = swRegistration.installing;
-      worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && hadController) { updateReady = true; if (started) toast('A small update is ready. Tap here to refresh.', 'update', 9000); else location.reload(); } });
+      worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && hadController) { updateReady = true; if (started) toast('Update ready. Tap to reload.', 'update', 9000); else location.reload(); } });
     });
     await navigator.serviceWorker.ready; offlineReady = true; syncInstall();
     if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

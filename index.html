@@ -3,18 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#182018">
+  <meta name="theme-color" content="#f7f1e3">
   <meta http-equiv="Permissions-Policy" content="fullscreen=(self)">
-  <meta name="description" content="Small paws. Endless possibilities. A peaceful, procedurally generated cat adventure. Install once, wander offline, whenever you like.">
+  <meta name="description" content="A small open-world game where you are a cat. Climb roofs, meet the neighbours, find shinies, knock things over. Runs in the browser and works offline.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Whiskerfield">
-  <title>Whiskerfield — A little world, all yours</title>
+  <title>Whiskerfield</title>
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="preload" href="./assets/fonts/fraunces-medium.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/dm-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./assets/game.js"></script>
@@ -57,7 +56,7 @@
       <a class="brand" href="#" id="brand" aria-label="Whiskerfield settings"><span class="brand-mark"><svg class="icon"><use href="#i-cat"/></svg></span><strong>Whiskerfield</strong></a>
       <div class="location-card play-hud" id="location-card"><svg class="icon"><use href="#i-leaf"/></svg><span id="district-name">Clover Quarter</span></div>
       <div class="top-actions">
-        <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Getting cozy…</span></span>
+        <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Loading…</span></span>
         <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends · shinies"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span><span><svg class="icon"><use href="#i-star"/></svg><b id="shiny-count">0</b></span></div>
         <button class="icon-button" id="sound-button" aria-label="Turn sound off" title="Sound"><svg class="icon"><use href="#i-sound"/></svg></button>
         <button class="icon-button" id="hat-button" aria-label="Open hats (H)" title="Hats · H"><svg class="icon"><use href="#i-hat"/></svg></button>
@@ -69,11 +68,11 @@
     </header>
 
     <section class="welcome hud" id="welcome" aria-labelledby="welcome-title">
-      <div class="eyebrow"><span></span> NO QUESTS. NO CLOCKS. JUST CAT.</div>
-      <h1 id="welcome-title">Small paws.<br>Endless <em>possibilities.</em></h1>
-      <p>A sun-warmed town, a thousand rooftops, friendly neighbours, and absolutely nowhere you need to be.</p>
-      <div class="welcome-actions"><button class="primary-button" id="start-button">Let’s wander <svg class="icon"><use href="#i-arrow"/></svg></button><button class="text-button" id="welcome-help"><svg class="icon"><use href="#i-help"/></svg> How to play</button></div>
-      <div class="welcome-note" id="welcome-note"><svg class="icon"><use href="#i-leaf"/></svg> A different little world, every time.</div>
+      <div class="welcome-kicker"><svg class="icon"><use href="#i-cat"/></svg> A small open world. You are the cat.</div>
+      <h1 id="welcome-title">Whiskerfield</h1>
+      <p>Climb the roofs, walk into the café, knock a bottle off a wall, find shinies for a hat. The town is generated from a seed and goes on as far as you walk.</p>
+      <div class="welcome-actions"><button class="primary-button" id="start-button">Play <svg class="icon"><use href="#i-arrow"/></svg></button><button class="text-button" id="welcome-help">How to play</button></div>
+      <div class="welcome-note" id="welcome-note"><svg class="icon"><use href="#i-check"/></svg> Keyboard, touch or gamepad. Saves on this device. Works offline once installed.</div>
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"><span class="toast-icon"><svg class="icon"><use href="#i-sun"/></svg></span><span id="toast-text"></span></div>
@@ -82,7 +81,7 @@
 
     <div class="bottom-bar hud play-hud">
       <div class="keyboard-controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span><span><kbd>space</kbd> jump</span><span><kbd>shift</kbd> run</span><span><kbd>E</kbd> climb</span><span><kbd>M</kbd> map</span><span><kbd>H</kbd> hats</span><span class="look-hint">drag to look · scroll to zoom</span></div>
-      <button class="rest-button" id="rest-button" title="Take a little breather · N" aria-label="Rest" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg></button>
+      <button class="rest-button" id="rest-button" title="Nap · N" aria-label="Rest" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg></button>
     </div>
 
     <div class="touch-controls hud play-hud" id="touch-controls">
@@ -94,69 +93,65 @@
       </div>
     </div>
 
-    <div class="rotate-screen" id="rotate" hidden><svg class="icon"><use href="#i-rotate"/></svg><h2>Turn your phone sideways.</h2><p>Whiskerfield is lovelier in landscape. Rotate your device, or go fullscreen and we’ll try to turn it for you.</p><div><button class="primary-button" id="rotate-fullscreen">Fullscreen landscape</button><button class="text-button" id="rotate-continue">Continue in portrait</button></div></div>
-    <div class="loading-screen" id="loading"><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>A little world is waking up.</h2><p>Putting the sunshine in its place…</p><div class="loading-track"><span></span></div></div>
-    <div class="error-screen" id="error-screen" hidden><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>A little technical catnap.</h2><p id="error-message">This game needs WebGL. Try an up-to-date Chrome, Edge, Firefox, or Safari browser with hardware acceleration enabled.</p><button class="primary-button" onclick="location.reload()">Try again</button></div>
+    <div class="rotate-screen" id="rotate" hidden><svg class="icon"><use href="#i-rotate"/></svg><h2>Turn your phone sideways</h2><p>The game is made for landscape. Rotate the phone, or go fullscreen and it will try to rotate for you.</p><div><button class="primary-button" id="rotate-fullscreen">Fullscreen landscape</button><button class="text-button" id="rotate-continue">Continue in portrait</button></div></div>
+    <div class="loading-screen" id="loading"><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>Loading</h2><p>Building the first few streets…</p><div class="loading-track"><span></span></div></div>
+    <div class="error-screen" id="error-screen" hidden><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>Something went wrong</h2><p id="error-message">This game needs WebGL. Try an up-to-date Chrome, Edge, Firefox, or Safari browser with hardware acceleration enabled.</p><button class="primary-button" onclick="location.reload()">Try again</button></div>
   </main>
 
   <div class="modal-backdrop" id="modal-backdrop" hidden>
     <section class="modal" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close instructions"><svg class="icon"><use href="#i-close"/></svg></button>
-      <div class="modal-eyebrow"><svg class="icon"><use href="#i-paw"/></svg> THE ART OF DOING VERY LITTLE</div>
-      <h2 id="help-title">Follow your whiskers.</h2><p>There’s no finish line here. Just a soft breeze, interesting corners, and a new view from the top.</p>
+      <h2 id="help-title">How to play</h2><p>There is no goal and no timer. Explore, climb, and see what the town has.</p>
       <div class="help-grid">
-        <div><span class="help-icon"><svg class="icon"><use href="#i-paw"/></svg></span><h3>Wander your way</h3><p><kbd>W A S D</kbd> or arrow keys to move. Hold <kbd>shift</kbd> to run flat out.</p></div>
-        <div><span class="help-icon"><svg class="icon"><use href="#i-jump"/></svg></span><h3>A little leap</h3><p><kbd>space</kbd> to jump onto cars, benches, pots, and window sills. Jump at a wall and keep pushing to scramble up it.</p></div>
-        <div><span class="help-icon"><svg class="icon"><use href="#i-climb"/></svg></span><h3>Up is an option</h3><p>Hold <kbd>E</kbd> by a wall, tree trunk, lamp post, or chimney to climb. Trees have a comfy perch on top.</p></div>
-        <div><span class="help-icon"><svg class="icon"><use href="#i-heart"/></svg></span><h3>Say hello</h3><p>Walk up to a neighbour and they’ll stop for a fuss. <kbd>M</kbd> opens the map, <kbd>N</kbd> takes a nap, <kbd>F</kbd> goes fullscreen.</p></div>
+        <div><span class="help-icon"><svg class="icon"><use href="#i-paw"/></svg></span><h3>Move</h3><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys. Hold <kbd>shift</kbd> to run.</p></div>
+        <div><span class="help-icon"><svg class="icon"><use href="#i-jump"/></svg></span><h3>Jump</h3><p><kbd>space</kbd>. Cars, benches, bins and window sills are all fair game. Jump at a wall and keep pushing to scramble up.</p></div>
+        <div><span class="help-icon"><svg class="icon"><use href="#i-climb"/></svg></span><h3>Climb</h3><p>Hold <kbd>E</kbd> at a wall, tree, lamp post or chimney. Stairs and low steps you just walk up.</p></div>
+        <div><span class="help-icon"><svg class="icon"><use href="#i-heart"/></svg></span><h3>Everything else</h3><p>Walk up to people to say hello. Walk over a shiny to pick it up. <kbd>H</kbd> hats, <kbd>M</kbd> map, <kbd>N</kbd> nap, <kbd>F</kbd> fullscreen.</p></div>
       </div>
-      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>On a phone, play sideways: the paw joystick moves, the run button latches on and off, and jump and climb sit under your right thumb. Drag anywhere else to look around. A Bluetooth gamepad works too: left stick move, right stick look, A jump, B/RB climb, triggers run, L3 toggles run.</span></div>
-      <button class="primary-button full-width" data-close>Got it. No hurry. <svg class="icon"><use href="#i-check"/></svg></button>
+      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>Phone: play in landscape. Left thumb joystick to move, right thumb for run, climb and jump; drag anywhere else to look. Gamepad: left stick move, right stick look, A jump, B or RB climb, triggers run.</span></div>
+      <button class="primary-button full-width" data-close>OK</button>
     </section>
 
     <section class="modal settings-modal" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close settings"><svg class="icon"><use href="#i-close"/></svg></button>
-      <div class="modal-eyebrow"><svg class="icon"><use href="#i-sun"/></svg> MAKE YOURSELF AT HOME</div>
-      <h2 id="settings-title">Your kind of quiet.</h2><p>The world can wait a moment.</p>
-      <div class="setting-row"><div><strong>Sounds of the neighborhood</strong><small>Soft tones, birds, and a little breeze</small></div><button class="toggle on" id="audio-toggle" role="switch" aria-checked="true" aria-label="Neighborhood sounds"><span></span></button></div>
-      <div class="setting-row"><div><label for="volume-slider">A comfortable volume</label><small id="volume-label">40%</small></div><input type="range" id="volume-slider" min="0" max="100" value="40" aria-label="Sound volume"></div>
+      <h2 id="settings-title">Settings</h2>
+      <div class="setting-row"><div><strong>Sound</strong><small>Ambient tones, birds and effects</small></div><button class="toggle on" id="audio-toggle" role="switch" aria-checked="true" aria-label="Neighborhood sounds"><span></span></button></div>
+      <div class="setting-row"><div><label for="volume-slider">Volume</label><small id="volume-label">40%</small></div><input type="range" id="volume-slider" min="0" max="100" value="40" aria-label="Sound volume"></div>
       <div class="setting-row"><div><label for="sensitivity-slider">Camera sensitivity</label><small id="sensitivity-label">70%</small></div><input type="range" id="sensitivity-slider" min="20" max="150" value="70" aria-label="Camera sensitivity"></div>
-      <div class="setting-row"><div><strong>Fullscreen landscape on play</strong><small>On phones, go fullscreen and turn sideways when you start</small></div><button class="toggle on" id="immersive-toggle" role="switch" aria-checked="true" aria-label="Fullscreen landscape on play"><span></span></button></div>
-      <div class="setting-row"><div><strong>Soft shadows</strong><small>Turn off for a lighter stroll on older devices</small></div><button class="toggle on" id="shadow-toggle" role="switch" aria-checked="true" aria-label="Soft shadows"><span></span></button></div>
-      <div class="setting-row"><div><strong>Gentler motion</strong><small>Less camera sway and fewer drifting leaves</small></div><button class="toggle" id="motion-toggle" role="switch" aria-checked="false" aria-label="Gentler motion"><span></span></button></div>
-      <div class="setting-row world-seed"><div><strong>Your world</strong><small id="seed-label">Seed: clover-108</small></div><button class="secondary-button" id="new-world-button">New neighborhood</button></div>
-      <div class="new-world-confirm" id="new-world-confirm" hidden><p>A new town means a fresh discovery journal. Your current world will be replaced.</p><div><button class="secondary-button" id="cancel-new-world">Keep this world</button><button class="primary-button" id="confirm-new-world">A fresh start</button></div></div>
-      <button class="primary-button full-width" data-close>Back to the breeze <svg class="icon"><use href="#i-arrow"/></svg></button>
-      <div class="settings-footer"><button class="text-button" id="settings-help">How to play</button><button class="text-button" id="install-link">How to install</button><span>WHISKERFIELD · 1.3</span></div>
+      <div class="setting-row"><div><strong>Fullscreen on phones</strong><small>Go fullscreen and lock to landscape when you press Play</small></div><button class="toggle on" id="immersive-toggle" role="switch" aria-checked="true" aria-label="Fullscreen landscape on play"><span></span></button></div>
+      <div class="setting-row"><div><strong>Shadows</strong><small>Turn off on older devices for a smoother frame rate</small></div><button class="toggle on" id="shadow-toggle" role="switch" aria-checked="true" aria-label="Soft shadows"><span></span></button></div>
+      <div class="setting-row"><div><strong>Reduce motion</strong><small>Less camera sway, fewer drifting leaves</small></div><button class="toggle" id="motion-toggle" role="switch" aria-checked="false" aria-label="Gentler motion"><span></span></button></div>
+      <div class="setting-row world-seed"><div><strong>World</strong><small id="seed-label">Seed: clover-108</small></div><button class="secondary-button" id="new-world-button">New town</button></div>
+      <div class="new-world-confirm" id="new-world-confirm" hidden><p>This replaces the current town and its discoveries. The old one is kept under its seed, so you can come back with <code>?seed=…</code>.</p><div><button class="secondary-button" id="cancel-new-world">Cancel</button><button class="primary-button" id="confirm-new-world">New town</button></div></div>
+      <button class="primary-button full-width" data-close>Done</button>
+      <div class="settings-footer"><button class="text-button" id="settings-help">How to play</button><button class="text-button" id="install-link">Install</button><span>Whiskerfield 1.3</span></div>
     </section>
 
     <section class="modal hats-modal" id="hats-modal" role="dialog" aria-modal="true" aria-labelledby="hats-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close hats"><svg class="icon"><use href="#i-close"/></svg></button>
-      <div class="modal-eyebrow"><svg class="icon"><use href="#i-hat"/></svg> THE WARDROBE</div>
-      <h2 id="hats-title">Something for the head.</h2>
-      <p>Shinies turn up on rooftops, ledges and under things — bottle caps, marbles, a key or two. Each one you find unlocks a little more of the wardrobe. You have found <b id="hat-found">0</b> so far.</p>
+      <h2 id="hats-title">Hats</h2>
+      <p>Shinies are small things that glint: bottle caps, marbles, keys. They sit on rooftops, ledges and pavements. Each hat unlocks at a number of shinies found. You have found <b id="hat-found">0</b>.</p>
       <div class="hat-list" id="hat-list"></div>
-      <button class="primary-button full-width" data-close>Back outside <svg class="icon"><use href="#i-arrow"/></svg></button>
+      <button class="primary-button full-width" data-close>Done</button>
     </section>
 
     <section class="modal map-modal" id="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close map"><svg class="icon"><use href="#i-close"/></svg></button>
-      <div class="modal-eyebrow"><svg class="icon"><use href="#i-map"/></svg> A SENSE OF SOMEWHERE</div>
-      <h2 id="map-title">Your little corner.</h2><p class="map-seed"><small id="map-seed">Seed</small> <span class="map-seed-hint">· add <code>?seed=…</code> to the address to come back here</span></p><p id="map-description">Every turn has something new on the other side.</p>
+      <h2 id="map-title">Map</h2><p class="map-seed"><small id="map-seed">Seed</small> <span class="map-seed-hint">· add <code>?seed=…</code> to the address to open this town again</span></p><p id="map-description">Drag to look further.</p>
       <div class="map-frame"><canvas id="map-canvas" width="960" height="650" aria-label="Map of the nearby procedurally generated neighborhood"></canvas><span class="map-north">N<span>↑</span></span><button class="map-recenter icon-button" id="map-recenter" title="Center on your cat" aria-label="Center map on your cat"><svg class="icon"><use href="#i-compass"/></svg></button></div>
-      <div class="map-legend"><span><i class="legend-cat"></i>You, right here</span><span><i class="legend-roof"></i>Rooftop visited</span><span><i class="legend-park"></i>A quiet garden</span><span><i class="legend-person"></i>A neighbour</span></div>
-      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>The town grows as you wander. There’s always another street.</span></div>
+      <div class="map-legend"><span><i class="legend-cat"></i>You</span><span><i class="legend-roof"></i>Visited roof</span><span><i class="legend-park"></i>Park</span><span><i class="legend-person"></i>Person</span></div>
+      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>Chunks are generated as you walk; the map shows what has been loaded so far.</span></div>
     </section>
 
     <section class="modal install-modal" id="install-modal" role="dialog" aria-modal="true" aria-labelledby="install-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close install instructions"><svg class="icon"><use href="#i-close"/></svg></button>
       <span class="install-app-icon"><svg class="icon"><use href="#i-cat"/></svg></span>
-      <div class="modal-eyebrow">A LITTLE WORLD TO KEEP</div><h2 id="install-title">Take the quiet with you.</h2><p>One install. No account. No subscription.<br>Your whole neighborhood, even without internet.</p>
+      <h2 id="install-title">Install</h2><p>Adds Whiskerfield to your home screen or app list. No account. Works without internet after the first load.</p>
       <div class="install-ready" id="install-ready"><svg class="icon"><use href="#i-check"/></svg><span>Getting the offline files ready…</span></div>
-      <p class="installed-note" id="installed-note" hidden>Whiskerfield is already installed on this device. Open it from your home screen or app list for the full-screen version.</p>
+      <p class="installed-note" id="installed-note" hidden>Whiskerfield is installed on this device. Open it from your home screen or app list.</p>
       <button class="primary-button full-width" id="install-now-button">Install Whiskerfield <svg class="icon"><use href="#i-download"/></svg></button>
-      <div class="install-instructions" id="install-instructions"><h3>Make it a home-screen kind of thing.</h3><ol><li><strong>iPhone or iPad:</strong> open this page in Safari, tap Share, then “Add to Home Screen.”</li><li><strong>Android:</strong> open Chrome’s ⋮ menu, then “Install app” or “Add to Home screen.”</li><li><strong>Desktop:</strong> use the install icon in Chrome or Edge’s address bar, or choose “Install Whiskerfield” in the browser menu.</li></ol></div>
-      <p class="install-fineprint">Open the game once while connected and wait for “Offline ready.” After that, every building, sound, and sunny spot is yours offline. Your journey saves on this device.</p>
+      <div class="install-instructions" id="install-instructions"><h3>Install by hand</h3><ol><li><strong>iPhone or iPad:</strong> open this page in Safari, tap Share, then “Add to Home Screen.”</li><li><strong>Android:</strong> open Chrome’s ⋮ menu, then “Install app” or “Add to Home screen.”</li><li><strong>Desktop:</strong> use the install icon in Chrome or Edge’s address bar, or choose “Install Whiskerfield” in the browser menu.</li></ol></div>
+      <p class="install-fineprint">Open the game once while online and wait for “Offline ready”. After that it runs without a connection. Progress is saved in this browser.</p>
     </section>
   </div>
 </body>

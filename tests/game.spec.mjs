@@ -376,8 +376,11 @@ test('ponds, fountains, birds, and a camera that stays above the scenery', async
     g.teleport(w.x + Math.cos(a) * (w.r + 2), 0, w.z + Math.sin(a) * (w.r + 2)); step(5);
     g.setCamera(Math.atan2(Math.cos(a), Math.sin(a))); g.hold.y = -1; step(150); g.hold.y = 0;
     out.edge = { d: Math.hypot(g.player.pos.x - w.x, g.player.pos.z - w.z), r: w.r, wet: !!g.world.inWater(g.player.pos.x, g.player.pos.z) };
-    g.hold.y = -1; step(3); g.hold.jump = true; g.hold.jumpHeld = true; step(50); g.hold.jumpHeld = false; step(30);
-    out.wade = { wet: !!g.world.inWater(g.player.pos.x, g.player.pos.z), speed: g.player.speed, y: g.player.pos.y };
+    g.hold.y = -1; step(3); g.hold.jump = true; g.hold.jumpHeld = true; step(8); g.hold.y = 0;
+    for (let i = 0; i < 90 && !g.player.grounded; i++) { g.step(1 / 60); if (i === 40) g.hold.jumpHeld = false; }
+    g.hold.jumpHeld = false; step(30);
+    g.hold.y = -1; step(20);
+    out.wade = { wet: !!g.world.inWater(g.player.pos.x, g.player.pos.z) && g.player.pos.y < .2, speed: g.player.speed, y: g.player.pos.y };
     g.hold.y = 1; step(200); g.hold.y = 0; out.out = !g.world.inWater(g.player.pos.x, g.player.pos.z);
     // The fountain's colliders match its shape: the cat sits on the real rim, not in the air above it.
     const f = g.world.colliders.find(s => s.kind === 'fountain' && s.maxY < .6);
@@ -401,6 +404,25 @@ test('ponds, fountains, birds, and a camera that stays above the scenery', async
   expect(r.birds.perched).toBe(r.birds.count);
   expect(r.birds.low).toBeGreaterThan(r.birds.count / 2);
   expect(r.startle.startles).toBeGreaterThanOrEqual(1);
+  // Paws stay on top of the paving: pavements, roads, footpaths and park paths all have real heights,
+  // and stepping off a kerb is a step, not a fall.
+  const ground = await page.evaluate(() => {
+    const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    const at = (x, z) => { g.teleport(x, .5, z); step(40); return g.player.pos.y; };
+    const out = { pavement: at(28.45, 10), road: at(32.5, 10), footpath: at(0, 10) };
+    g.setCamera(0); g.teleport(31, .5, 10); step(20); let air = 0, lands = 0, prev = true; g.hold.x = -1;
+    for (let i = 0; i < 150; i++) { g.step(1 / 60); if (!g.player.grounded) air++; if (g.player.grounded && !prev) lands++; prev = g.player.grounded; }
+    g.hold.x = 0; out.kerb = { air, lands, x: g.player.pos.x };
+    step(60); out.people = g.people.list.filter(p => Math.abs(p.y - g.world.groundHeight(p.x, p.z)) < .02).length / g.people.list.length;
+    return out;
+  });
+  expect(ground.pavement).toBeCloseTo(.13, 2);
+  expect(ground.road).toBeCloseTo(.045, 2);
+  expect(ground.footpath).toBeCloseTo(.05, 2);
+  expect(ground.kerb.x).toBeLessThan(27);
+  expect(ground.kerb.air).toBe(0);
+  expect(ground.kerb.lands).toBe(0);
+  expect(ground.people).toBeGreaterThanOrEqual(.8);
   // Camera: the lowest allowed pitch never puts the eye into the ground or inside a fountain.
   await page.evaluate(() => { const g = window.__whiskerfield; const f = g.world.colliders.find(s => s.kind === 'fountain' && s.maxY < .6); g.teleport(f.x, 0, f.z + 2.2); g.setCamera(Math.PI + .4, .16, 4); });
   await page.waitForTimeout(2500);

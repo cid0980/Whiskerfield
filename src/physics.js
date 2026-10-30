@@ -47,7 +47,7 @@ export class PhysicsWorld {
   }
   // Highest walkable surface at (x, z) below `limit`; used when settling after a mantle.
   highest(x, z, limit) {
-    let y = 0;
+    let y = Math.min(limit, this.world.groundHeight(x, z));
     for (const s of this.query(x, z, .2)) {
       if (s.walkable === false) continue;
       const h = surfaceHeight(s, x, z);
@@ -56,7 +56,8 @@ export class PhysicsWorld {
     return y;
   }
   support(x, z, reference, includeRoofs = true) {
-    let best = { y: 0, solid: null };
+    const g = this.world.groundHeight(x, z);
+    let best = { y: g <= reference + EPS ? g : 0, solid: null };
     for (const s of this.query(x, z, .2)) {
       if (s.walkable === false || (!includeRoofs && s.shape === 'roof')) continue;
       const y = surfaceHeight(s, x, z);
@@ -268,7 +269,8 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
   }
   const wasGrounded = p.grounded; p.grounded = false;
   const ground = physics.support(p.pos.x, p.pos.z, beforeY + (wasGrounded ? CAT.step : .025));
-  if (p.vy <= 0 && nextY <= ground.y + .002 && beforeY >= ground.y - (wasGrounded ? CAT.step : .04)) {
+  const stepDown = wasGrounded && p.vy <= 0 && p.vy > -1.2 && ground.y < beforeY && beforeY - ground.y <= CAT.step * .8;
+  if ((p.vy <= 0 && nextY <= ground.y + .002 && beforeY >= ground.y - (wasGrounded ? CAT.step : .04)) || stepDown) {
     p.pos.y = ground.y; p.vy = 0; p.grounded = true; p.support = ground.solid; p.jumpCut = false; p.airTime = 0;
     if (!wasGrounded) { p.landImpact = clamp(Math.abs(ground.y - nextY) * 2 + .25, .2, 1); events.land?.(ground.solid); }
   } else { p.pos.y = nextY; p.support = null; p.airTime += dt; }

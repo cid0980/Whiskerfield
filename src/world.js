@@ -150,7 +150,7 @@ export class World {
     const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null };
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const grass = ['#93a86f', '#9aae75', '#8fa46a', '#a0b27b'][hash(cx, cz, this.seed, 4) % 4];
-    c.batch.box(ox, -.23, oz, CHUNK + .05, .4, CHUNK + .05, grass);
+    c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
     // Neighborhood streets are continuous across chunk boundaries.
     const road = '#b9ae96', pavement = '#cfc4ab';
     for (const s of [-1, 1]) {
@@ -527,8 +527,8 @@ export class World {
     b.box(x,.085,z,3.2,.08,25,'#c2b79d');
     b.box(x,.086,z,25,.08,3.2,'#c2b79d');
     const px=x+4.5,pz=z-4.3,pr=3.4+r()*1.2;
-    b.cyl(px,.09,pz,pr,.14,'#8ebbb0');
-    b.cyl(px,.105,pz,pr-.25,.04,'#a1c9ba');
+    b.cyl(px,.01,pz,pr,.1,'#8ebbb0');
+    b.cyl(px,.047,pz,pr-.25,.03,'#a1c9ba');
     c.water.push({x:px,z:pz,r:pr});
     for(let j=0;j<18;j++){
       const a=j/18*TAU,xx=px+Math.cos(a)*(pr+.13),zz=pz+Math.sin(a)*(pr+.13);
@@ -639,4 +639,21 @@ export class World {
   }
 
   inWater(x,z){return this.water.find(w=>(x-w.x)**2+(z-w.z)**2<w.r*w.r);}
+  // Height of the walkable ground surface: pavements, roads, footpaths, park lawns and paths, the square.
+  // Keeps paws on top of the paving instead of inside it.
+  groundHeight(x,z){
+    const lx=x-Math.round(x/CHUNK)*CHUNK, lz=z-Math.round(z/CHUNK)*CHUNK, ax=Math.abs(lx), az=Math.abs(lz);
+    const pave=v=>Math.abs(v-28.45)<.525||Math.abs(v-35.45)<.525;
+    if((pave(ax)&&az<=31.5)||(pave(az)&&ax<=31.5))return .13;
+    let h=0;
+    for(const p of this.parks){
+      const dx=Math.abs(x-p.x), dz=Math.abs(z-p.z);
+      if(dx<12&&dz<12){ if((dx<1.6&&dz<12.5)||(dz<1.6&&dx<12.5))return .125; h=.075; break; }
+    }
+    if(h)return h;
+    if(Math.abs(x)<36&&Math.abs(z)<36){ const d=Math.hypot(x,z-3); if(d<5.8)return .1175; if(d<6.5)return .095; }
+    if((ax<1.5&&az<29)||(az<1.5&&ax<29))return .05;
+    if((ax>29&&ax<=36)||(az>29&&az<=36))return .045;
+    return 0;
+  }
 }

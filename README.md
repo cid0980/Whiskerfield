@@ -134,6 +134,10 @@ MIT licensed. See `LICENSE`.
 - Cats don't walk into ponds: the water's edge stops them; a deliberate jump in means a slow wade back out.
 - Little garden birds (budgie yellow, sky blue, green, white) perch on lamps, benches, sills, branches and chimneys, and flutter off with a chirp when the cat comes close.
 
+## Version 1.2.3 fix
+
+- Paws on top of the paving: pavements (13 cm), park paths, footpaths, roads and the square now have real ground heights, so the cat and the neighbours no longer stand ankle-deep in the kerb. Stepping on or off a kerb is a smooth step, never a fall. The pond sits slightly below the lawn.
+
 ## GitHub Pages
 
 The included workflow at `.github/workflows/deploy.yml` builds the game and deploys the static site to GitHub Pages on every push to `main`.

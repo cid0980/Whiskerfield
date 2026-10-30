@@ -122,6 +122,17 @@ export class PhysicsWorld {
     }
     return y;
   }
+  // Is there room for a standing cat at (x, z) with its feet at y? Used before a mantle, so a
+  // cat climbing an inside wall cannot pop through a ceiling onto the roof.
+  headroom(x, z, y, ignore = null) {
+    for (const s of this.query(x, z, CAT.radius + .05)) {
+      if (s === ignore || s.sensor || s.shape === 'roof' || s.shape === 'ellipsoid') continue;
+      if (s.minY >= y + CAT.height - .02 || s.maxY <= y + .06) continue;
+      if (s.shape === 'cylinder') { if (Math.hypot(x - s.x, z - s.z) < s.r + CAT.radius * .5) return false; continue; }
+      if (x > s.minX - CAT.radius * .5 && x < s.maxX + CAT.radius * .5 && z > s.minZ - CAT.radius * .5 && z < s.maxZ + CAT.radius * .5) return false;
+    }
+    return true;
+  }
   nearbyWall(position, maxDistance = .52, heading = null, standingOn = null) {
     let best = null, score = Infinity;
     for (const s of this.query(position.x, position.z, maxDistance + .4)) {
@@ -171,11 +182,18 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
   if (magnitude > 1e-4) { ix /= magnitude; iz /= magnitude; } else ix = iz = 0;
   p.moveAmount = amount;
   const wall = physics.nearbyWall(p.pos, .5, p.heading, p.grounded ? p.support : null);
-  const wantsClimb = input.climb || (input.autoClimb && amount > .3 && !p.grounded && p.airTime > .09 && p.vy < 3.2);
+  // No climbing out of a lift car: the walls of the shaft are not for cats.
+  const wantsClimb = !(p.support?.lift) && (input.climb || (input.autoClimb && amount > .3 && !p.grounded && p.airTime > .09 && p.vy < 3.2));
   if (wantsClimb && wall && p.climbCooldown === 0 && !input.resting) {
     const s = wall.solid;
     p.climbing = wall; p.grounded = false; p.vy = 0; p.vx = p.vz = 0; p.speed = CAT.climb;
     p.heading = dampAngle(p.heading, Math.atan2(-wall.nx, -wall.nz), 20, dt);
+    const climbTo = physics.ceiling(p.pos.y, p.pos.y + CAT.climb * dt, p.pos.x, p.pos.z, CAT.height, CAT.radius);
+    if (climbTo < p.pos.y + CAT.climb * dt - 1e-6) {
+      // Head against a ceiling (a floor above, a bridge deck): hang for a beat, then drop.
+      p.pos.y = Math.max(p.pos.y, climbTo); p.climbing = null; p.climbCooldown = .6; p.vy = -.5; p.speed = 0;
+      return { wall, climbed: false };
+    }
     p.pos.y += CAT.climb * dt;
     if (s.shape === 'ellipsoid' || s.tree) {
       // Follow the bark, then the outside of the crown instead of clipping through it.
@@ -200,8 +218,14 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
       const nz = s.shape === 'box' ? wall.nz : (p.pos.z - s.z) / (Math.hypot(p.pos.x - s.x, p.pos.z - s.z) || 1);
       // Thin perches (lamp posts, pots, tree crowns) get the cat centred on top instead of hopped over.
       const narrow = s.shape !== 'box' && Math.min(s.rx ?? s.r, s.rz ?? s.r) < .6;
-      if (narrow) { p.pos.x = s.x; p.pos.z = s.z; } else { p.pos.x -= nx * (CAT.radius + .24); p.pos.z -= nz * (CAT.radius + .24); }
-      p.pos.y = Math.max(physics.highest(p.pos.x, p.pos.z, s.maxY + 1.6), s.minY) + .025;
+      const lx = narrow ? s.x : p.pos.x - nx * (CAT.radius + .24), lz = narrow ? s.z : p.pos.z - nz * (CAT.radius + .24);
+      const ly = Math.max(physics.highest(lx, lz, s.maxY + 1.6), s.minY) + .025;
+      if (!physics.headroom(lx, lz, ly, s)) {
+        // Nothing to stand on up there (an inside wall under a floor): let go.
+        p.climbing = null; p.climbCooldown = .6; p.vy = -.5; p.speed = 0; p.pos.y = s.maxY - .05;
+        return { wall, climbed: false };
+      }
+      p.pos.x = lx; p.pos.z = lz; p.pos.y = ly;
       p.vy = narrow ? .6 : 1.2; p.vx = narrow ? 0 : -nx * 1.1; p.vz = narrow ? 0 : -nz * 1.1;
       p.climbing = null; p.climbCooldown = .38; p.mantling = .3; p.jumpBuffer = 0;
       events.mantle?.(s);
@@ -287,6 +311,13 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
     p.pos.y = ground.y; p.vy = 0; p.grounded = true; p.support = ground.solid; p.jumpCut = false; p.airTime = 0;
     if (!wasGrounded) { p.landImpact = clamp(Math.abs(ground.y - nextY) * 2 + .25, .2, 1); events.land?.(ground.solid); }
   } else { p.pos.y = nextY; p.support = null; p.airTime += dt; }
+  // A cat never ends up inside a pitched roof: mantling onto the eave of a gable or hip roof puts the
+  // body just under the slope, so lift it onto the tiles.
+  for (const s of physics.query(p.pos.x, p.pos.z, .2)) {
+    if (s.shape !== 'roof') continue;
+    const h = surfaceHeight(s, p.pos.x, p.pos.z);
+    if (Number.isFinite(h) && p.pos.y < h - .005 && p.pos.y > s.minY - .4) { p.pos.y = h; if (p.vy < 0) p.vy = 0; p.grounded = true; p.support = s; p.airTime = 0; }
+  }
   p.speed = Math.hypot(p.vx, p.vz); p.distance += p.speed * dt;
   if (p.speed > .12) {
     const target = Math.atan2(p.vx, p.vz), delta = angleDelta(p.heading, target);

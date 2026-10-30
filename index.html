@@ -59,7 +59,7 @@
         <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Loading…</span></span>
         <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends · shinies"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span><span><svg class="icon"><use href="#i-star"/></svg><b id="shiny-count">0</b></span></div>
         <button class="icon-button" id="sound-button" aria-label="Turn sound off" title="Sound"><svg class="icon"><use href="#i-sound"/></svg></button>
-        <button class="icon-button" id="hat-button" aria-label="Open hats (H)" title="Hats · H"><svg class="icon"><use href="#i-hat"/></svg></button>
+        <button class="icon-button" id="hat-button" aria-label="Open wardrobe (H)" title="Wardrobe · H"><svg class="icon"><use href="#i-hat"/></svg></button>
         <button class="icon-button" id="map-button" aria-label="Open neighborhood map (M)" title="Map · M"><svg class="icon"><use href="#i-map"/></svg></button>
         <button class="icon-button" id="fullscreen-button" aria-label="Fullscreen" title="Fullscreen · F"><svg class="icon"><use href="#i-expand"/></svg></button>
         <button class="icon-button" id="settings-button" aria-label="Open settings (Escape)" title="Settings · Esc"><svg class="icon"><use href="#i-settings"/></svg></button>
@@ -128,11 +128,17 @@
       <div class="settings-footer"><button class="text-button" id="settings-help">How to play</button><button class="text-button" id="install-link">Install</button><span>Whiskerfield 1.3</span></div>
     </section>
 
-    <section class="modal hats-modal" id="hats-modal" role="dialog" aria-modal="true" aria-labelledby="hats-title" hidden>
-      <button class="modal-close icon-button" data-close aria-label="Close hats"><svg class="icon"><use href="#i-close"/></svg></button>
-      <h2 id="hats-title">Hats</h2>
-      <p>Shinies are small things that glint: bottle caps, marbles, keys. They sit on rooftops, ledges and pavements. Each hat unlocks at a number of shinies found. You have found <b id="hat-found">0</b>.</p>
-      <div class="hat-list" id="hat-list"></div>
+    <section class="modal wardrobe-modal" id="wardrobe-modal" role="dialog" aria-modal="true" aria-labelledby="wardrobe-title" hidden>
+      <button class="modal-close icon-button" data-close aria-label="Close wardrobe"><svg class="icon"><use href="#i-close"/></svg></button>
+      <h2 id="wardrobe-title">Wardrobe</h2>
+      <p>Shinies are small things that glint: bottle caps, marbles, keys. They sit on rooftops, ledges and pavements, in every country. Each thing to wear unlocks at a number found, or when you find a particular shiny. You have found <b id="hat-found">0</b>.</p>
+      <div class="wardrobe">
+        <div class="wardrobe-stage"><canvas id="wardrobe-canvas" aria-label="The cat, wearing its outfit"></canvas><small>drag to turn</small></div>
+        <div class="wardrobe-side">
+          <div class="wardrobe-tabs" id="wardrobe-tabs" role="tablist"></div>
+          <div class="hat-list" id="hat-list"></div>
+        </div>
+      </div>
       <button class="primary-button full-width" data-close>Done</button>
     </section>
 

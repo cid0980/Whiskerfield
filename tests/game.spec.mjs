@@ -530,11 +530,40 @@ test('fun: shinies can be picked up, things can be knocked over, and hats unlock
   expect(r.lockedFirst).toBe(false); expect(r.leaf).toBe(true); expect(r.hat).toBe('leaf'); expect(r.hatMeshes).toBe(1);
   expect(r.prop.before).toBe('up'); expect(r.prop.after).toBe('down'); expect(r.prop.moved).toBeGreaterThan(.3); expect(r.prop.knocks).toBeGreaterThanOrEqual(1);
   expect(r.saved).toEqual({ shinies: 1, hat: 'leaf', knocks: r.prop.knocks });
-  // Hats modal opens with H and lists every hat.
+  // The wardrobe opens with H, lists every hat on the hat tab, and several items can be worn at once.
   await page.keyboard.press('KeyH');
-  await expect(page.locator('#hats-modal')).toBeVisible();
+  await expect(page.locator('#wardrobe-modal')).toBeVisible();
   expect(await page.locator('.hat-card').count()).toBe(10);
   await expect(page.locator('.hat-card.wearing strong')).toHaveText('Leaf');
+  const w = await page.evaluate(() => { const g = window.__whiskerfield; const scarf = g.wear('neck', 'collar'); const o = g.outfit; return { scarf, hat: o.hat, neck: o.neck }; });
+  expect(w.scarf).toBe(true); expect(w.hat).toBe('leaf'); expect(w.neck).toBe('collar');
+});
+
+test('towers have floors, stairs and a lift that carries the cat; houses grow wings; gable roofs are walkable', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    g.start(); g.world.radius = 1; g.world.center = '';
+    g.teleport(-160.5, .3, -74.5); step(60);
+    const chunk = [...g.world.chunks.values()].find(c => c.lifts?.length), spec = chunk.lifts[0], car = g.lifts.cars.get(spec.id);
+    const out = { levels: spec.levels.length, floors: g.world.landmarks.filter(l => l.kind === 'floor').length, wings: g.world.buildings.filter(b => b.parent).length };
+    g.teleport(spec.x, .6, spec.z + 2.2); step(30); g.setCamera(0); g.hold.y = -1; step(40); g.hold.y = 0; out.boarded = g.player.support?.kind;
+    step(360); out.ride = { y: +g.player.pos.y.toFixed(2), level: car.level, support: g.player.support?.kind };
+    // Stairs from floor 1 to floor 2.
+    const bld = g.world.buildings.find(b => b.id === spec.id.replace(':lift', '')), lane = bld.z - bld.d / 2 + .35 + 1.45 + .725, startX = bld.x + bld.w / 2 - .3 - 2.5 - .05 - .35 - .6;
+    g.teleport(startX, spec.levels[1] + .3, lane); step(30); g.setCamera(Math.PI / 2); g.hold.y = -1; let top = 0; for (let i = 0; i < 160 && !top; i++) { g.step(1 / 60); if (g.player.support?.kind === 'floor' && Math.abs(g.player.pos.y - spec.levels[2]) < .05) top = g.player.pos.y; } g.hold.y = 0; out.stairs = { y: +top.toFixed(2), target: spec.levels[2] };
+    // Gable roof: a cat put on the eave ends up on the tiles, not inside the roof.
+    const gb = g.world.buildings.find(b => b.roofType === 0 && !b.parent); g.teleport(gb.x - gb.w / 2 + 1.5, gb.h + .5, gb.z); step(40);
+    out.roof = { y: +g.player.pos.y.toFixed(2), h: gb.h, support: g.player.support?.kind };
+    return out;
+  });
+  expect(r.levels).toBeGreaterThanOrEqual(7); expect(r.floors).toBeGreaterThan(0); expect(r.wings).toBeGreaterThan(0);
+  expect(r.boarded).toBe('lift'); expect(r.ride.level).toBeGreaterThanOrEqual(1); expect(r.ride.y).toBeGreaterThan(3); expect(r.ride.support).toBe('lift');
+  expect(Math.abs(r.stairs.y - r.stairs.target)).toBeLessThan(.3);
+  expect(r.roof.y).toBeGreaterThan(r.roof.h + .5); expect(r.roof.support).toBe('roof');
+  expect(errors).toEqual([]);
 });
 
 test('out of town: a station with a canopy to sit on, allotments with a greenhouse, ducks that flee, crows up high', async ({ page }) => {

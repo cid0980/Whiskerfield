@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { World, CHUNK, hashString, random, districtName, COUNTRIES, COUNTRY_IDS } from './world.js';
 import { Train } from './train.js';
+import { Lifts } from './lifts.js';
 import { Planes, Flight, Sky, PLANE } from './plane.js';
 import { Cat } from './cat.js';
 import { NeighborhoodAudio } from './audio.js';
-import { CAT, PhysicsWorld, createPlayer, stepPlayer } from './physics.js';
+import { CAT, PhysicsWorld, createPlayer, stepPlayer, surfaceHeight } from './physics.js';
 import { People } from './npc.js';
-import { Fun, HATS, buildHat } from './fun.js';
+import { Fun, HATS, WARDROBE, SLOTS, SLOT_NAMES, DEFAULT_OUTFIT, SHINY_KINDS, findItem, buildItem, lockReason } from './fun.js';
 import { Ducks } from './ducks.js';
 import { Birds } from './birds.js';
 import * as platform from './platform.js';
@@ -39,8 +40,14 @@ const visitedGardens = new Set(Array.isArray(saved?.gardens) ? saved.gardens.fil
 const visitedPlaces = new Set(Array.isArray(saved?.places) ? saved.places.filter(v => typeof v === 'string').slice(-10000) : []);
 let friendsMade = Number.isFinite(saved?.friends) ? saved.friends : 0;
 const savedShinies = Array.isArray(saved?.shinies) ? saved.shinies.filter(v => typeof v === 'string').slice(-20000) : [];
-let savedKnocks = Number.isFinite(saved?.knocks) ? saved.knocks : 0, hatId = typeof saved?.hat === 'string' && HATS.some(h => h.id === saved.hat) ? saved.hat : 'none';
-let fun = null, ducks = null, train = null, planes = null, sky = null, boardTimer = 0, boardingPlane = null;
+let savedKnocks = Number.isFinite(saved?.knocks) ? saved.knocks : 0;
+// The outfit: one item per slot. Older saves only had a hat.
+const cleanOutfit = o => { const out = { ...DEFAULT_OUTFIT }; for (const slot of SLOTS) if (typeof o?.[slot] === 'string' && findItem(slot, o[slot])) out[slot] = o[slot]; return out; };
+const outfit = cleanOutfit(saved?.outfit && typeof saved.outfit === 'object' ? saved.outfit : { hat: saved?.hat });
+let hatId = outfit.hat;
+// Shinies found in other countries of the same town used to live in their own journeys; fold them in.
+for (const k of Object.keys(localStorage)) if (saved?.seed && k.startsWith(SAVE_KEY + ':' + saved.seed + '~')) { try { const j = JSON.parse(localStorage.getItem(k)); for (const v of j?.shinies || []) if (typeof v === 'string' && !v.includes('/')) savedShinies.push(k.slice((SAVE_KEY + ':' + saved.seed + '~').length) + '/' + v); } catch {} }
+let fun = null, ducks = null, train = null, lifts = null, planes = null, sky = null, boardTimer = 0, boardingPlane = null;
 const flight = new Flight();
 let countryId = COUNTRIES[saved?.country] ? saved.country : 'whiskerfield';
 const journeyKey = (seed, country) => country && country !== 'whiskerfield' ? seed + '~' + country : seed;
@@ -68,7 +75,7 @@ const markDirty = () => { saveDirty = true; };
 function save() {
   if (!world) return;
   saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: hatId, settings, started })); }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: outfit.hat, outfit, settings, started })); }
   catch { if (!storageWarning) { storageWarning = true; toast('Saving is blocked in this browser (private mode?). Progress will not be kept.', 'note', 5000); } }
 }
 // One quiet line at the top of the screen; never a panel over the world.
@@ -102,11 +109,11 @@ function openModal(id) {
   if (id === 'map-modal') { mapCenter = { x: player.pos.x, z: player.pos.z }; drawMap(); }
   if (id === 'settings-modal') { $('seed-label').textContent = 'Seed: ' + world.seedText; $('new-world-confirm').hidden = true; syncSettings(); syncInstall(); }
   if (id === 'install-modal') syncInstall();
-  if (id === 'hats-modal') { syncHats(); $('hat-button').classList.remove('new'); }
+  if (id === 'wardrobe-modal') { syncWardrobe(); $('hat-button').classList.remove('new'); wardrobeShow(true); }
   requestAnimationFrame(() => $(id).querySelector('button')?.focus({ preventScroll: true }));
 }
 function closeModal() {
-  if (!modal) return; modal = null; $('modal-backdrop').hidden = true; document.querySelectorAll('.modal').forEach(el => el.hidden = true); clearInput();
+  if (!modal) return; if (modal === 'wardrobe-modal') wardrobeShow(false); modal = null; $('modal-backdrop').hidden = true; document.querySelectorAll('.modal').forEach(el => el.hidden = true); clearInput();
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); else $('world').focus({ preventScroll: true });
 }
 function start() {
@@ -146,7 +153,7 @@ function init() {
   const groundTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128); for (let i = 0; i < 2400; i++) { x.fillStyle = `rgba(60,75,45,${Math.random() * .1})`; x.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(180, 180); return t; })();
   ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: '#93a86f', roughness: 1, map: groundTex })); ground.rotation.x = -Math.PI / 2; ground.position.y = -.45; ground.receiveShadow = true; scene.add(ground);
   createWorld(urlSeed || saved?.seed || defaultSeed(), countryId);
-  cat = new Cat(scene, CAT.scale); cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading; wearHat(hatId, true);
+  cat = new Cat(scene, CAT.scale); cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading; applyOutfit();
   createAtmosphere(); createUI(); syncSettings(); updateCounts();
   cameraTarget.copy(player.pos); updateCamera(1, true);
   $('seed-label').textContent = 'Seed: ' + world.seedText;
@@ -155,9 +162,9 @@ function init() {
   requestAnimationFrame(() => { requestAnimationFrame(() => { $('loading').classList.add('done'); setTimeout(() => $('loading').hidden = true, 700); }); });
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
-    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); const ride = train.update(dt, player.pos, !!player.support?.train); if (player.support?.train && !flight.active) player.pos.z += ride; if (flight.active) flight.update(dt); else { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; } planes.sync(); time += dt; }, get fun() { return fun; }, get ducks() { return ducks; }, get train() { return train; }, get planes() { return planes; }, flight, get country() { return countryId; }, travel, offerFlight, board: id => beginFlight(id), wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
-    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: hatId, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
-    teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
+    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); const ride = train.update(dt, player.pos, !!player.support?.train); if (player.support?.train && !flight.active) player.pos.z += ride; lifts.sync(); const lifted = lifts.update(dt, player.pos, player.support); if (lifted) player.pos.y += lifted; if (flight.active) flight.update(dt); else { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; } planes.sync(); time += dt; }, get fun() { return fun; }, get ducks() { return ducks; }, get train() { return train; }, get planes() { return planes; }, flight, get country() { return countryId; }, travel, offerFlight, board: id => beginFlight(id), wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
+    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
+    wear, outfit, wardrobe, get lifts() { return lifts; }, teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
     getSettings: () => ({ ...settings })
   };
@@ -183,41 +190,101 @@ function createWorld(seed, country = 'whiskerfield') {
   ducks = new Ducks(scene, world, physics); ducks.sync(player.pos); ducks.onQuack = (kind, idle) => audio.quack(kind === 'duckling', idle);
   train = new Train(scene, world, physics); train.onWhistle = d => audio.whistle(d); train.onChuff = (d, k) => audio.chuff(d, k);
   planes = new Planes(scene, world, physics); planes.sync();
+  lifts = new Lifts(scene, world, physics); lifts.sync(); lifts.onChime = d => audio.chime(d); lifts.onHum = d => audio.hum(d);
   if (!sky) sky = new Sky(scene);
-  fun = new Fun(scene, world, physics, { collected: savedShinies, knocks: savedKnocks }); fun.sync();
+  fun = new Fun(scene, world, physics, { collected: savedShinies, knocks: savedKnocks, prefix: countryId === 'whiskerfield' ? '' : countryId + '/' }); fun.sync();
   fun.onShiny = shiny => {
-    const n = fun.found; updateCounts(); audio.shiny(); burst(shiny.x, shiny.y, shiny.z); markDirty();
-    const unlocked = HATS.find(h => h.need === n && h.id !== 'none');
-    toast(unlocked ? `${shiny.kind.line} That makes ${n} — the ${unlocked.name.toLowerCase()} is yours. Press H.` : n === 1 ? `${shiny.kind.line} A cat could start a collection.` : shiny.kind.line, 'sun', unlocked ? 4600 : 2600);
-    if (unlocked) $('hat-button').classList.add('new');
-    if (n % 5 === 0 || unlocked) save();
+    const n = fun.found, counts = fun.counts(); updateCounts(); audio.shiny(); burst(shiny.x, shiny.y, shiny.z); markDirty();
+    const unlocked = [];
+    for (const slot of SLOTS) for (const h of WARDROBE[slot]) { if (h.id === 'none' || !h.need && !h.kind) continue; if (h.kind ? h.kind === shiny.kind.kind && counts[h.kind] === 1 : h.need === n) unlocked.push(h); }
+    const names = unlocked.map(h => h.name.toLowerCase());
+    toast(unlocked.length ? `${shiny.kind.line} ${names.length > 1 ? `The ${names.slice(0, -1).join(', ')} and the ${names.at(-1)} are` : `The ${names[0]} is`} yours — press H.` : n === 1 ? `${shiny.kind.line} A cat could start a collection.` : shiny.kind.line, 'sun', unlocked.length ? 4600 : 2600);
+    if (unlocked.length) $('hat-button').classList.add('new');
+    if (n % 5 === 0 || unlocked.length) save();
   };
   fun.onKnock = (prop, sound, soft) => {
     audio.clatter(sound, soft); if (soft) return; markDirty();
     if (fun.knocks === 1) toast('Oops. It was in the way.', 'leaf', 2600);
     else if (fun.knocks === 10) toast('Ten things knocked over. The street has noticed.', 'leaf', 3000);
   };
-  if (cat) wearHat(hatId, true);
+  if (cat) applyOutfit();
 }
-function wearHat(id, silent = false) {
-  const hat = HATS.find(h => h.id === id) || HATS[0];
-  if (fun && fun.found < hat.need) { if (!silent) toast(`Find ${hat.need - fun.found} more ${hat.need - fun.found === 1 ? 'shiny' : 'shinies'} for the ${hat.name.toLowerCase()}.`, 'note', 2600); return false; }
-  hatId = hat.id; cat.setHat(hat.id, buildHat(hat.id)); markDirty(); if (!silent) { save(); syncHats(); }
+// ---- wardrobe -----------------------------------------------------------------------------------
+function applyOutfit(target = cat) { if (!target) return; for (const slot of SLOTS) target.setItem(slot, outfit[slot], buildItem(slot, outfit[slot])); }
+function wear(slot, id, silent = false) {
+  const item = findItem(slot, id) || WARDROBE[slot]?.[0]; if (!item) return false;
+  const why = fun ? lockReason(item, fun.found, fun.counts()) : null;
+  if (why) { if (!silent) toast(why.kind ? `The ${item.name.toLowerCase()} needs ${why.name} first. Keep looking.` : `Find ${why.need} more ${why.need === 1 ? 'shiny' : 'shinies'} for the ${item.name.toLowerCase()}.`, 'note', 2600); return false; }
+  outfit[slot] = item.id; hatId = outfit.hat; cat.setItem(slot, item.id, buildItem(slot, item.id)); if (wardrobe.cat) wardrobe.cat.setItem(slot, item.id, buildItem(slot, item.id));
+  markDirty(); if (!silent) { save(); syncWardrobe(); audio.chirp(); }
   return true;
 }
-function syncHats() {
-  const list = $('hat-list'); if (!list) return; list.textContent = '';
-  const found = fun ? fun.found : 0; $('hat-found').textContent = found;
-  for (const h of HATS) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'hat-card'; b.dataset.hat = h.id;
-    const locked = found < h.need, wearing = hatId === h.id;
-    b.classList.toggle('locked', locked); b.classList.toggle('wearing', wearing); b.setAttribute('aria-pressed', wearing ? 'true' : 'false');
+const wearHat = (id, silent = false) => wear('hat', id, silent);
+const wardrobe = { tab: 'hat', renderer: null, scene: null, camera: null, cat: null, yaw: .5, yawTarget: .5, drag: null, open: false, time: 0, bob: 0 };
+function syncWardrobe() {
+  const list = $('hat-list'), tabs = $('wardrobe-tabs'); if (!list || !tabs) return;
+  const found = fun ? fun.found : 0, counts = fun ? fun.counts() : {}; $('hat-found').textContent = found;
+  tabs.textContent = '';
+  for (const slot of [...SLOTS, 'collection']) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'tab' + (wardrobe.tab === slot ? ' active' : ''); b.dataset.tab = slot; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', wardrobe.tab === slot ? 'true' : 'false');
+    b.textContent = slot === 'collection' ? 'Collection' : SLOT_NAMES[slot];
+    if (slot !== 'collection' && WARDROBE[slot].some(h => !lockReason(h, found, counts) && h.id !== outfit[slot] && (h.need || h.kind))) b.classList.add('has-new');
+    b.addEventListener('click', () => { wardrobe.tab = slot; syncWardrobe(); });
+    tabs.appendChild(b);
+  }
+  list.textContent = '';
+  if (wardrobe.tab === 'collection') {
+    list.classList.add('collection');
+    for (const k of SHINY_KINDS) {
+      const card = document.createElement('div'); card.className = 'hat-card collect' + (counts[k.kind] ? '' : ' locked');
+      card.innerHTML = `<span class="swatch"></span><strong></strong><small></small><em></em>`;
+      card.querySelector('.swatch').style.background = k.color; card.querySelector('strong').textContent = k.name.replace(/^an? /, '').replace(/^\w/, c => c.toUpperCase());
+      card.querySelector('small').textContent = counts[k.kind] ? k.line : 'Not found yet. Try rooftops and ledges.'; card.querySelector('em').textContent = counts[k.kind] ? `× ${counts[k.kind]}` : '?';
+      list.appendChild(card);
+    }
+    const tally = document.createElement('div'); tally.className = 'hat-card tally'; tally.innerHTML = `<strong>${found} shinies · ${fun ? fun.knocks : 0} things knocked over</strong><small>Shinies count across every country you have flown to. Things you wear can all be worn at once.</small>`; list.appendChild(tally);
+    return;
+  }
+  list.classList.remove('collection');
+  for (const h of WARDROBE[wardrobe.tab]) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'hat-card'; b.dataset.hat = h.id; b.dataset.slot = wardrobe.tab;
+    const why = lockReason(h, found, counts), wearing = outfit[wardrobe.tab] === h.id;
+    b.classList.toggle('locked', !!why); b.classList.toggle('wearing', wearing); b.setAttribute('aria-pressed', wearing ? 'true' : 'false');
     b.innerHTML = `<strong></strong><small></small><em></em>`;
     b.querySelector('strong').textContent = h.name; b.querySelector('small').textContent = h.blurb;
-    b.querySelector('em').textContent = wearing ? 'Wearing' : locked ? `${h.need} shinies` : h.need ? 'Found' : '';
-    b.addEventListener('click', () => { if (wearHat(h.id)) syncHats(); });
+    b.querySelector('em').textContent = wearing ? 'Wearing' : why ? (why.kind ? `needs ${why.name}` : `${h.need} shinies`) : h.need || h.kind ? 'Found' : '';
+    b.addEventListener('click', () => { if (wear(wardrobe.tab, h.id)) syncWardrobe(); });
     list.appendChild(b);
   }
+}
+// A second little scene with its own cat, so you can see the outfit from every side.
+function wardrobeShow(on) {
+  wardrobe.open = on; if (!on) return;
+  const canvas = $('wardrobe-canvas'); if (!canvas) return;
+  if (!wardrobe.renderer) {
+    try { wardrobe.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' }); } catch { return; }
+    wardrobe.renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); wardrobe.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    wardrobe.scene = new THREE.Scene();
+    wardrobe.scene.add(new THREE.HemisphereLight('#fff6e4', '#b7a98a', 1.4));
+    const key = new THREE.DirectionalLight('#fff1d6', 1.6); key.position.set(2, 4, 3); wardrobe.scene.add(key);
+    const rim = new THREE.DirectionalLight('#cfe3ff', .8); rim.position.set(-3, 2, -2); wardrobe.scene.add(rim);
+    wardrobe.camera = new THREE.PerspectiveCamera(32, 1, .1, 50); wardrobe.camera.position.set(0, 1.0, 4.4); wardrobe.camera.lookAt(0, .62, 0);
+    wardrobe.cat = new Cat(wardrobe.scene, 1); wardrobe.cat.shadow.material.opacity = .18;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.3, 40), new THREE.MeshStandardMaterial({ color: '#e7dcc3', roughness: 1 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -.005; wardrobe.scene.add(disc);
+    const down = e => { wardrobe.drag = { x: e.clientX, yaw: wardrobe.yawTarget }; canvas.setPointerCapture?.(e.pointerId); };
+    const move = e => { if (wardrobe.drag) wardrobe.yawTarget = wardrobe.drag.yaw + (e.clientX - wardrobe.drag.x) * .012; };
+    const up = () => { wardrobe.drag = null; };
+    canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  }
+  applyOutfit(wardrobe.cat); wardrobe.yawTarget = .5; wardrobe.yaw = .5;
+}
+function renderWardrobe(dt) {
+  const w = wardrobe; if (!w.open || !w.renderer) return;
+  const canvas = w.renderer.domElement, size = Math.max(120, Math.min(canvas.clientWidth, canvas.clientHeight) || 260);
+  if (canvas.width !== Math.round(size * w.renderer.getPixelRatio())) { w.renderer.setSize(size, size, false); w.camera.aspect = 1; w.camera.updateProjectionMatrix(); }
+  w.time += dt; if (!w.drag) w.yawTarget += dt * .25; w.yaw = THREE.MathUtils.damp(w.yaw, w.yawTarget, 10, dt);
+  w.cat.root.rotation.y = w.yaw; w.cat.update(dt, w.time, { speed: 0, grounded: true, resting: false }, 0, settings.reducedMotion);
+  w.renderer.render(w.scene, w.camera);
 }
 
 function createAtmosphere() {
@@ -241,7 +308,7 @@ function createUI() {
   $('settings-help').addEventListener('click', () => openModal('help-modal'));
   $('settings-button').addEventListener('click', () => openModal('settings-modal'));
   $('map-button').addEventListener('click', () => openModal('map-modal'));
-  $('hat-button').addEventListener('click', () => openModal('hats-modal'));
+  $('hat-button').addEventListener('click', () => openModal('wardrobe-modal'));
   $('brand').addEventListener('click', e => { e.preventDefault(); openModal('settings-modal'); });
   $('rest-button').addEventListener('click', toggleRest);
   $('fullscreen-button').addEventListener('click', async () => { if (platform.isFullscreen()) await platform.exitFullscreen(); else { await platform.enterFullscreen(); if (mobile) await platform.lockLandscape(); } syncOrientation(); });
@@ -286,7 +353,7 @@ function createUI() {
     if (!started) return;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'ShiftLeft', 'ShiftRight', 'KeyM', 'KeyN', 'KeyF', 'KeyH'].includes(e.code)) e.preventDefault();
     if (e.code === 'KeyM' && !e.repeat) { openModal('map-modal'); return; }
-    if (e.code === 'KeyH' && !e.repeat) { openModal('hats-modal'); return; }
+    if (e.code === 'KeyH' && !e.repeat) { openModal('wardrobe-modal'); return; }
     if (e.code === 'KeyN' && !e.repeat) { toggleRest(); return; }
     if (e.code === 'KeyF' && !e.repeat) { $('fullscreen-button').click(); return; }
     if (e.code === 'Space' && !e.repeat && !keys.has('Space')) jumpQueued = true;
@@ -311,7 +378,7 @@ function createUI() {
   canvas.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId) || modal) return; const p = pointers.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, 3.2, mobile ? 9 : 14); lastPinch = d; }
-    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, .16, mobile ? .95 : 1.15); }
+    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, -.62, 1.4); }
     cameraInputTimer = 1.6;
   });
   const release = e => pointers.delete(e.pointerId); canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release); canvas.addEventListener('lostpointercapture', release);
@@ -368,10 +435,11 @@ flight.onArrive = airport => {
 function travel(id) {
   stashJourney({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected], knocks: fun.knocks, hat: hatId, started });
   const seed = world.seedText;
-  people.dispose(); birds.dispose(); ducks.dispose(); train.dispose(); planes.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose();
+  people.dispose(); birds.dispose(); ducks.dispose(); train.dispose(); planes.dispose(); lifts.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose();
   const prior = loadJourney(seed, id);
-  visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0;
-  if (prior) { for (const v of prior.roofs || []) visitedRoofs.add(v); for (const v of prior.gardens || []) visitedGardens.add(v); for (const v of prior.places || []) visitedPlaces.add(v); friendsMade = prior.friends || 0; savedShinies.push(...(prior.shinies || [])); savedKnocks = prior.knocks || 0; }
+  // Shinies and knock-overs are the cat's, not the town's: they come along. Roofs, gardens and friends belong to the place.
+  visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedShinies.push(...fun.collected); savedKnocks = fun.knocks;
+  if (prior) { for (const v of prior.roofs || []) visitedRoofs.add(v); for (const v of prior.gardens || []) visitedGardens.add(v); for (const v of prior.places || []) visitedPlaces.add(v); friendsMade = prior.friends || 0; }
   // The nearest airport to the origin of every country sits at chunk (2, 0); land there.
   player.pos.set(2 * CHUNK + 2.1, .3, 9.9); player.vx = player.vz = player.vy = 0;
   createWorld(seed, id); updateCounts(); currentDistrict = '';
@@ -382,7 +450,7 @@ function travel(id) {
 
 function newWorld() {
   stashJourney({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected], knocks: fun.knocks, hat: hatId, started });
-  people.dispose(); birds.dispose(); ducks.dispose(); train.dispose(); planes.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0; hatId = 'none';
+  people.dispose(); birds.dispose(); ducks.dispose(); train.dispose(); planes.dispose(); lifts.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0; Object.assign(outfit, DEFAULT_OUTFIT); hatId = 'none';
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed(), 'whiskerfield'); updateCounts(); closeModal(); save();
@@ -431,7 +499,7 @@ function pollGamepad(dt) {
   const dead = v => Math.abs(v) < .16 ? 0 : (Math.abs(v) - .16) / .84 * Math.sign(v);
   gamepadMoveX = dead(pad.axes[0] || 0); gamepadMoveY = dead(pad.axes[1] || 0);
   const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
-  if (rx || ry) { cameraYawTarget -= rx * 2.6 * dt; cameraPitchTarget = clamp(cameraPitchTarget + ry * 1.8 * dt, .16, 1.15); cameraInputTimer = 1.6; }
+  if (rx || ry) { cameraYawTarget -= rx * 2.6 * dt; cameraPitchTarget = clamp(cameraPitchTarget + ry * 1.8 * dt, -.62, 1.4); cameraInputTimer = 1.6; }
   const b = i => !!pad.buttons[i]?.pressed;
   if (b(10) && !prevPadButtons[10]) touchRun = !touchRun;
   gamepadRun = b(6) || b(7); gamepadClimb = b(1) || b(5) || b(4);
@@ -470,6 +538,12 @@ function updateCamera(dt, instant = false) {
   if (!isWelcome) {
     for (const s of physics.query(player.pos.x, player.pos.z, distance + 1.5)) {
       if (s.shape === 'ellipsoid' || s.person || (s.shape === 'cylinder' && s.r < .2) || s.maxY - s.minY < .3) continue;
+      if (s.shape === 'roof') {
+        // Pitched roofs are not boxes: rather than yanking the camera in whenever it crosses the
+        // roof's bounding volume, lift it just enough that the line of sight clears the slopes.
+        for (let k = 1; k <= 6; k++) { const t = k / 6, hx = cameraTarget.x + cameraDesired.x * t, hz = cameraTarget.z + cameraDesired.z * t, hy = surfaceHeight(s, hx, hz); if (Number.isFinite(hy) && cameraTarget.y + cameraDesired.y * t < hy + .35) needY = Math.max(needY, cameraTarget.y + (hy + .35 - cameraTarget.y) / t); }
+        continue;
+      }
       const t = rayBox(cameraTarget, cameraDesired, s);
       if (t >= 1) continue;
       // Tall things block the camera (walls, roofs, crates, fountain columns, trunks) and pull it closer;
@@ -480,7 +554,7 @@ function updateCamera(dt, instant = false) {
   }
   if (allowed < 1) cameraDesired.multiplyScalar(Math.max(.18, allowed - .3 / distance));
   cameraDesired.add(cameraTarget);
-  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * .9);
+  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * 1.1);
   // Never let the camera sink into the ground, a pond, a fountain rim, or a bench top.
   if (!isWelcome) {
     const floor = physics.highest(cameraDesired.x, cameraDesired.z, cameraDesired.y);
@@ -674,6 +748,8 @@ function loop(now) {
   if (world.update(player.pos, 1)) fun.sync(); world.animate(time);
   const ride = train.update(dt, player.pos, !!player.support?.train);
   if (player.support?.train && !flight.active) player.pos.z += ride;
+  const lifted = lifts.update(dt, player.pos, player.support);
+  if (lifted) player.pos.y += lifted;
   if (started && !modal) simulate(dt); else { player.speed = 0; player.turnRate = 0; player.accel = 0; wallHint = null; }
   if (flight.active) flight.update(dt);
   else if (started && !modal) { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; }
@@ -690,7 +766,7 @@ function loop(now) {
   sun.position.set(player.pos.x - 35, 60, player.pos.z + 25); sun.target.position.set(player.pos.x, 0, player.pos.z);
   hudTimer += dt;
   if (hudTimer > .25) {
-    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync(); ducks.sync(player.pos); planes.sync();
+    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync(); ducks.sync(player.pos); planes.sync(); lifts.sync();
     const showHint = !!wallHint && !player.climbing && !resting && started && !modal && player.grounded;
     $('context-hint').classList.toggle('visible', showHint && !mobile);
     $('touch-climb').classList.toggle('ready', showHint);
@@ -700,6 +776,7 @@ function loop(now) {
   }
   if (resting) { purrTimer += dt; if (purrTimer > 1.7) { purrTimer = 0; audio.purr(); } }
   renderer.render(scene, camera);
+  renderWardrobe(dt);
 }
 
 function syncInstall() {

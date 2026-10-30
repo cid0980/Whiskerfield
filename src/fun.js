@@ -56,14 +56,71 @@ export const HATS = [
   { id: 'tophat', name: 'Top hat', need: 36, blurb: 'Distinguished. Slightly too big.', build: g => { g.add(part(GEO.cylinder, '#2c2a2e', 0, .2, 0, .22, .4, .22)); g.add(part(GEO.cylinder, '#2c2a2e', 0, .0, 0, .36, .03, .36)); g.add(part(GEO.cylinder, '#b8433e', 0, .06, 0, .23, .06, .23)); } },
   { id: 'crown', name: 'Crown', need: 50, blurb: 'Ruler of every rooftop.', build: g => { g.add(part(GEO.cylinder, '#e0b64a', 0, .08, 0, .24, .16, .24)); for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; g.add(part(GEO.cone, '#e0b64a', Math.cos(a) * .2, .2, Math.sin(a) * .2, .06, .14, .06)); g.add(part(GEO.sphere, ['#c94a3f', '#5f7a9a', '#6d9a52'][i % 3], Math.cos(a) * .22, .1, Math.sin(a) * .22, .03, .03, .03)); } } },
 ];
-export function buildHat(id) {
-  const hat = HATS.find(h => h.id === id); if (!hat?.build) return null;
-  const g = new THREE.Group(); hat.build(g); g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g;
+export function buildHat(id) { return buildItem('hat', id); }
+
+// ---- The rest of the wardrobe -------------------------------------------------------------
+// Five slots that can all be worn at once. `need` is a shiny count; `kind` means "you must have
+// found at least one of that shiny" (a bell for the bell collar, a coin for the monocle).
+const glassMat = () => new THREE.MeshStandardMaterial({ color: '#9fd3e6', roughness: .15, metalness: .1, transparent: true, opacity: .45 });
+const stripBox = (g, color, x, y, z, sx, sy, sz, rx = 0, rz = 0, ry = 0) => { const m = part(GEO.box, color, x, y, z, sx, sy, sz, rx, rz); m.rotation.y = ry; g.add(m); return m; };
+export const WARDROBE = {
+  hat: HATS,
+  neck: [
+    { id: 'none', name: 'Bare neck', need: 0, blurb: 'Nothing at all.' },
+    { id: 'collar', name: 'Green collar', need: 0, blurb: 'The one you came with. The bell still rings.', build: g => { const c = part(GEO.torus, '#5d7463', 0, 0, 0, .26, .26, .26); c.rotation.x = Math.PI / 2 + .2; g.add(c); g.add(part(GEO.sphere, '#c9a35c', 0, -.16, .22, .055, .065, .055)); } },
+    { id: 'bandana', name: 'Red bandana', need: 2, blurb: 'Tied at the back, like a proper rascal.', build: g => { const c = part(GEO.torus, '#c9524a', 0, 0, 0, .25, .25, .25); c.rotation.x = Math.PI / 2 + .2; g.add(c); const t = part(GEO.cone, '#c9524a', 0, -.2, .24, .22, .34, .06); t.rotation.x = Math.PI + .5; g.add(t); } },
+    { id: 'bowtie', name: 'Bow tie', need: 6, blurb: 'For dinners, weddings and bins.', build: g => { const c = part(GEO.torus, '#2c2a2e', 0, 0, 0, .25, .25, .25); c.rotation.x = Math.PI / 2 + .2; g.add(c); for (const s of [-1, 1]) g.add(part(GEO.cone, '#7f5aa6', s * .13, -.1, .3, .09, .22, .05, 0, s * Math.PI / 2)); g.add(part(GEO.sphere, '#7f5aa6', 0, -.1, .3, .045, .045, .045)); } },
+    { id: 'bell', name: 'Big brass bell', need: 0, kind: 'bell', blurb: 'You found the bell; now everyone can hear you coming.', build: g => { const c = part(GEO.torus, '#8d3b2f', 0, 0, 0, .26, .26, .26); c.rotation.x = Math.PI / 2 + .2; g.add(c); g.add(part(GEO.sphere, '#d8b35a', 0, -.19, .24, .1, .11, .1)); g.add(part(GEO.box, '#2c2a2e', 0, -.19, .33, .09, .02, .02)); } },
+    { id: 'scarf', name: 'Striped scarf', need: 10, blurb: 'Knitted by somebody who loves you.', build: g => { const c = part(GEO.torus, '#e07a7a', 0, 0, 0, .27, .27, .27); c.scale.setScalar(.27); c.rotation.x = Math.PI / 2 + .2; g.add(c); for (let i = 0; i < 4; i++) g.add(part(GEO.box, i % 2 ? '#f1ead8' : '#e07a7a', -.18, -.12 - i * .1, .15, .12, .1, .05)); g.add(part(GEO.box, '#e07a7a', -.18, -.56, .15, .14, .06, .06)); } },
+    { id: 'key', name: 'Key on a string', need: 0, kind: 'key', blurb: 'A little brass key on a loop of string. To what?', build: g => { const c = part(GEO.torus, '#8d8470', 0, 0, 0, .25, .25, .25); c.scale.setScalar(.25); c.rotation.x = Math.PI / 2 + .2; g.add(c); g.add(part(GEO.box, '#c9a35c', 0, -.3, .2, .04, .2, .03)); g.add(part(GEO.torus, '#c9a35c', 0, -.18, .2, .05, .05, .05)); g.add(part(GEO.box, '#c9a35c', .04, -.37, .2, .05, .03, .03)); } },
+    { id: 'pendant', name: 'Silver pendant', need: 0, kind: 'ring', blurb: 'The silver ring, threaded on a chain.', build: g => { const c = part(GEO.torus, '#dfe3e6', 0, 0, 0, .25, .25, .25); c.scale.setScalar(.25); c.rotation.x = Math.PI / 2 + .2; g.add(c); const r = part(GEO.torus, '#dfe3e6', 0, -.26, .22, .07, .07, .07); g.add(r); } },
+    { id: 'lei', name: 'Flower lei', need: 20, blurb: 'From a warm place. Smells of summer.', build: g => { for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; g.add(part(GEO.sphere, ['#f08cae', '#f4d35e', '#fff4e6', '#e07a7a'][i % 4], Math.sin(a) * .3, -.1 + Math.cos(a) * .08 - .08, .1 + Math.cos(a) * .3, .06, .05, .06)); } } },
+    { id: 'ruff', name: 'Lace ruff', need: 32, blurb: 'Elizabethan. Takes up a lot of room.', build: g => { for (let i = 0; i < 16; i++) { const a = i / 16 * TAU; const m = part(GEO.cylinder, '#f7f3ea', Math.sin(a) * .36, -.02, .12 + Math.cos(a) * .36, .09, .04, .09); m.rotation.x = .2; g.add(m); } } },
+  ],
+  eyes: [
+    { id: 'none', name: 'Just eyes', need: 0, blurb: 'Green, and very good in the dark.' },
+    { id: 'glasses', name: 'Round glasses', need: 3, blurb: 'For reading the small print on tins.', build: g => { for (const s of [-1, 1]) { g.add(part(GEO.torus, '#b8864a', s * .15, 0, 0, .085, .085, .085)); const l = new THREE.Mesh(GEO.cylinder, glassMat()); l.position.set(s * .15, 0, 0); l.scale.set(.08, .01, .08); l.rotation.x = Math.PI / 2; g.add(l); } g.add(part(GEO.box, '#b8864a', 0, 0, 0, .13, .012, .012)); for (const s of [-1, 1]) g.add(part(GEO.box, '#b8864a', s * .25, .02, -.14, .012, .012, .3)); } },
+    { id: 'sunglasses', name: 'Sunglasses', need: 9, blurb: 'Too cool to chase string. Will still chase string.', build: g => { for (const s of [-1, 1]) g.add(part(GEO.box, '#2c2a2e', s * .15, 0, 0, .17, .11, .03)); g.add(part(GEO.box, '#2c2a2e', 0, .02, 0, .12, .02, .02)); for (const s of [-1, 1]) g.add(part(GEO.box, '#2c2a2e', s * .25, .02, -.14, .015, .015, .3)); } },
+    { id: 'monocle', name: 'Monocle', need: 0, kind: 'coin', blurb: 'An old coin, polished thin. I say.', build: g => { g.add(part(GEO.torus, '#e6c766', .15, 0, 0, .085, .085, .085)); const l = new THREE.Mesh(GEO.cylinder, glassMat()); l.position.set(.15, 0, 0); l.scale.set(.08, .01, .08); l.rotation.x = Math.PI / 2; g.add(l); g.add(part(GEO.box, '#e6c766', .26, -.15, -.02, .01, .3, .01, 0, .35)); } },
+    { id: 'eyepatch', name: 'Eyepatch', need: 14, blurb: 'Arr. Lost the eye to a seagull. (Not really.)', build: g => { g.add(part(GEO.sphere, '#2c2a2e', .15, 0, 0, .09, .08, .03)); const b = part(GEO.torus, '#2c2a2e', 0, .07, -.1, .3, .3, .3); b.scale.setScalar(.3); b.rotation.x = Math.PI / 2 - .3; g.add(b); } },
+    { id: 'mask', name: 'Hero mask', need: 24, blurb: 'Nobody knows it is you. Everybody knows it is you.', build: g => { g.add(part(GEO.box, '#3f4a9a', 0, .01, -.02, .5, .13, .05)); for (const s of [-1, 1]) g.add(part(GEO.sphere, '#7fa05a', s * .15, .01, .02, .055, .05, .02)); for (const s of [-1, 1]) g.add(part(GEO.cone, '#3f4a9a', s * .3, .07, -.03, .05, .12, .04, 0, -s * .5)); } },
+    { id: 'goggles', name: 'Flying goggles', need: 30, blurb: 'For the plane, the train, or a brisk day.', build: g => { for (const s of [-1, 1]) { g.add(part(GEO.cylinder, '#8a6a4c', s * .15, 0, 0, .1, .06, .1, Math.PI / 2)); const l = new THREE.Mesh(GEO.cylinder, glassMat()); l.position.set(s * .15, 0, .03); l.scale.set(.085, .01, .085); l.rotation.x = Math.PI / 2; g.add(l); } const b = part(GEO.torus, '#8a6a4c', 0, .05, -.1, .3, .3, .3); b.scale.setScalar(.3); b.rotation.x = Math.PI / 2 - .25; g.add(b); } },
+  ],
+  back: [
+    { id: 'none', name: 'Nothing', need: 0, blurb: 'Just fur.' },
+    { id: 'cape', name: 'Red cape', need: 5, blurb: 'It flaps. That is the whole point.', build: g => { const m = part(GEO.box, '#c9524a', 0, -.3, -.25, .48, .62, .03, .35); g.add(m); g.add(part(GEO.torus, '#e0b64a', 0, .02, .02, .22, .22, .22, Math.PI / 2 + .2)); g.userData.flap = m; } },
+    { id: 'backpack', name: 'Tiny backpack', need: 11, blurb: 'Holds one biscuit and a leaf.', build: g => { g.add(part(GEO.box, '#5f7a9a', 0, -.05, -.08, .34, .32, .22)); g.add(part(GEO.box, '#4a6180', 0, .06, -.08, .34, .12, .24)); g.add(part(GEO.box, '#e0b64a', 0, -.08, .05, .08, .06, .04)); for (const s of [-1, 1]) g.add(part(GEO.box, '#4a6180', s * .12, -.08, .1, .04, .3, .04)); } },
+    { id: 'wings', name: 'Butterfly wings', need: 18, blurb: 'Not for flying. For being looked at.', build: g => { for (const s of [-1, 1]) { const w1 = part(GEO.sphere, '#f08cae', s * .28, .12, -.1, .26, .2, .02); const w2 = part(GEO.sphere, '#f4d35e', s * .22, -.14, -.1, .18, .14, .02); g.add(w1, w2); g.add(part(GEO.sphere, '#fff4e6', s * .3, .14, -.08, .08, .06, .02)); } g.add(part(GEO.box, '#2c2a2e', 0, 0, -.1, .04, .4, .04)); } },
+    { id: 'shell', name: 'Borrowed shell', need: 26, blurb: 'The tortoise said it was fine.', build: g => { g.add(part(GEO.sphere, '#7a6a3c', 0, -.02, -.1, .42, .3, .5)); for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; g.add(part(GEO.sphere, '#9a8a50', Math.cos(a) * .22, .12, -.1 + Math.sin(a) * .28, .1, .06, .1)); } g.add(part(GEO.sphere, '#9a8a50', 0, .25, -.1, .13, .05, .15)); } },
+    { id: 'jetpack', name: 'Jetpack', need: 40, blurb: 'Decorative. Probably decorative.', build: g => { for (const s of [-1, 1]) { g.add(part(GEO.cylinder, '#9aa49c', s * .13, -.08, -.14, .1, .4, .1)); g.add(part(GEO.cone, '#c9524a', s * .13, .16, -.14, .1, .12, .1)); g.add(part(GEO.cone, '#e9c04b', s * .13, -.32, -.14, .07, .12, .07, Math.PI)); } g.add(part(GEO.box, '#5c6b66', 0, 0, -.06, .3, .3, .08)); } },
+  ],
+  tail: [
+    { id: 'none', name: 'Plain tail', need: 0, blurb: 'Expressive enough on its own.' },
+    { id: 'bow', name: 'Ribbon bow', need: 2, blurb: 'Tied on by the baker’s daughter.', build: g => { for (const s of [-1, 1]) g.add(part(GEO.cone, '#f08cae', s * .11, .12, 0, .09, .2, .04, 0, s * Math.PI / 2)); g.add(part(GEO.sphere, '#f08cae', 0, .12, 0, .05, .05, .05)); } },
+    { id: 'tailring', name: 'Tail ring', need: 0, kind: 'ring', blurb: 'The silver ring fits the tail better than a paw.', build: g => { g.add(part(GEO.torus, '#dfe3e6', 0, .1, 0, .09, .09, .09, Math.PI / 2)); } },
+    { id: 'pompom', name: 'Pompom', need: 15, blurb: 'Fluffy. Draws attention from the kittens.', build: g => { g.add(part(GEO.sphere, '#fff4e6', 0, .22, 0, .14, .14, .14)); } },
+    { id: 'bells', name: 'Tail bells', need: 0, kind: 'bell', blurb: 'Three tiny bells. No more sneaking.', build: g => { for (let i = 0; i < 3; i++) g.add(part(GEO.sphere, '#d8b35a', Math.sin(i * 2.1) * .08, .06 + i * .07, Math.cos(i * 2.1) * .08, .045, .05, .045)); } },
+    { id: 'lantern', name: 'Tail lantern', need: 33, blurb: 'A paper lantern that glows at the tip. Festival-ready.', build: g => { const m = part(GEO.sphere, '#f4a259', 0, .24, 0, .11, .13, .11); m.material = new THREE.MeshStandardMaterial({ color: '#f4a259', emissive: '#f4a259', emissiveIntensity: .8, roughness: .6 }); g.add(m); g.add(part(GEO.cylinder, '#2c2a2e', 0, .39, 0, .03, .03, .03)); g.add(part(GEO.cylinder, '#2c2a2e', 0, .1, 0, .03, .03, .03)); } },
+  ],
+};
+export const SLOTS = Object.keys(WARDROBE);
+export const SLOT_NAMES = { hat: 'Hats', neck: 'Collars', eyes: 'Eyes', back: 'Backs', tail: 'Tails' };
+export const DEFAULT_OUTFIT = Object.freeze({ hat: 'none', neck: 'collar', eyes: 'none', back: 'none', tail: 'none' });
+export function findItem(slot, id) { return WARDROBE[slot]?.find(h => h.id === id) || null; }
+export function buildItem(slot, id) {
+  const item = findItem(slot, id); if (!item?.build) return null;
+  const g = new THREE.Group(); item.build(g); g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g;
+}
+// Why an item is still locked, or null when it can be worn.
+export function lockReason(item, found, counts) {
+  if (item.kind && !(counts?.[item.kind] > 0)) return { kind: item.kind, name: SHINY_KINDS.find(k => k.kind === item.kind)?.name || item.kind };
+  if (found < item.need) return { need: item.need - found };
+  return null;
 }
 
 export class Fun {
-  constructor(scene, world, physics, { collected = [], knocks = 0 } = {}) {
-    this.scene = scene; this.world = world; this.physics = physics;
+  constructor(scene, world, physics, { collected = [], knocks = 0, prefix = '' } = {}) {
+    this.scene = scene; this.world = world; this.physics = physics; this.prefix = prefix;
     this.collected = new Set(collected); this.knocks = knocks; this.tracked = new Map();
     this.onShiny = null; this.onKnock = null; this.time = 0; this.nearest = Infinity;
   }
@@ -94,7 +151,7 @@ export class Fun {
     spots.push([ox + (rng() > .5 ? 28.45 : -28.45), oz + (rng() - .5) * 40, 'ground']);
     spots.forEach(([x, z, where], i) => {
       const s = top(x, z); if (!s || s.y > 60 || (where === 'ground' && s.y > 1.2)) return;
-      const id = `${c.key}:s${i}`; if (this.collected.has(id)) return;
+      const id = `${this.prefix}${c.key}:s${i}`; if (this.collected.has(id)) return;
       const kind = SHINY_KINDS[hash(c.cx * 8 + i, c.cz, this.world.seed, 1717) % SHINY_KINDS.length];
       const mesh = new THREE.Mesh(kind.geo, shinyMaterial(kind)); mesh.scale.set(...kind.scale.map(v => v * SHINY_SCALE)); mesh.castShadow = true;
       if (kind.kind === 'ring') mesh.rotation.x = Math.PI / 2;
@@ -177,6 +234,16 @@ export class Fun {
     p.g.quaternion.setFromAxisAngle(p.axis, p.ang).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw));
   }
 
+  // How many of each kind have been found (worked out from the ids, so nothing extra is saved).
+  counts() {
+    const out = {}; for (const k of SHINY_KINDS) out[k.kind] = 0;
+    for (const id of this.collected) {
+      const m = /(-?\d+),(-?\d+):s(\d+)$/.exec(id); if (!m) continue;
+      const kind = SHINY_KINDS[hash(+m[1] * 8 + +m[3], +m[2], this.world.seed, 1717) % SHINY_KINDS.length];
+      out[kind.kind]++;
+    }
+    return out;
+  }
   // Positions for the debug API and the map.
   listShinies() { const out = []; for (const [, t] of this.tracked) for (const s of t.shinies) out.push({ id: s.id, kind: s.kind.kind, x: s.x, y: s.y, z: s.z }); return out; }
   listProps() { const out = []; for (const [, t] of this.tracked) for (const p of t.props) out.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, state: p.state }); return out; }

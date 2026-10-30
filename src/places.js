@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO } from './world.js';
-import { hollow, doorway, KITS, person as roomPerson } from './rooms.js';
+import { hollow, doorway, KITS, PLACE_NAMES, person as roomPerson } from './rooms.js';
 
 // Landmark lots. Each function fills one 24 x 24 m lot centred on (x, z) in chunk `c`.
 // They draw with c.batch (merged static geometry), register colliders through the World helpers,
@@ -8,7 +8,7 @@ import { hollow, doorway, KITS, person as roomPerson } from './rooms.js';
 // heights) and landmarks (places the cat can discover).
 
 const TAU = Math.PI * 2;
-const Z = new THREE.Vector3(0, 0, 1);
+const Z = new THREE.Vector3(0, 0, 1), Y = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
 const pick = (r, list) => list[Math.floor(r() * list.length)];
 
 // ---- shared bits -----------------------------------------------------------------------------
@@ -16,7 +16,9 @@ const pick = (r, list) => list[Math.floor(r() * list.length)];
 // A walkable slope: short segments so the cat climbs it as a run of shallow steps.
 export function ramp(W, c, x1, y1, z1, x2, y2, z2, width, thick, color) {
   const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2), delta = b.clone().sub(a), len = delta.length();
-  const n = Math.max(2, Math.ceil(len / .42)), q = new THREE.Quaternion().setFromUnitVectors(Z, delta.clone().normalize()), e = new THREE.Euler().setFromQuaternion(q);
+  // Yaw first, then pitch about the ramp's own width axis, so the treads stay level across.
+  const yaw = Math.atan2(delta.x, delta.z), pitch = Math.atan2(delta.y, Math.hypot(delta.x, delta.z));
+  const seg = Math.min(.42, .12 / Math.max(.05, Math.abs(Math.sin(pitch)))), n = Math.max(2, Math.ceil(len / seg)), q = new THREE.Quaternion().setFromAxisAngle(Y, yaw).multiply(new THREE.Quaternion().setFromAxisAngle(X, -pitch)), e = new THREE.Euler().setFromQuaternion(q);
   for (let i = 0; i < n; i++) {
     const t = (i + .5) / n, p = a.clone().lerp(b, t);
     c.batch.add(GEO.box, p.x, p.y, p.z, width, thick, len / n + .02, color, e.x, e.y, e.z);
@@ -155,17 +157,54 @@ export function makeTower(W, c, x, z, r, id, tall = 1) {
   const b = c.batch, floors = Math.round((7 + r() * 5) * tall), fh = 3.1, h = floors * fh + .6, w = 12 + r() * 3, d = 12 + r() * 3;
   const glass = pick(r, ['#8fb0b8', '#9bb5a9', '#a2b7c6', '#88a7b5']), frame = pick(r, ['#e9e3d2', '#d8d3c3', '#5f6b66', '#c8bfae']);
   b.box(x, .14, z, 22, .3, 22, '#c6c0ae'); paving(c, x, z, 22, 22, .29);
-  // Lobby on the ground floor, the rest of the tower one block above it.
-  const lobbyH = fh + .3;
-  b.box(x, (lobbyH + h + .3) / 2, z, w, h + .3 - lobbyH, d, glass);
-  const body = W.solid(c, x, (lobbyH + h + .3) / 2, z, w, h + .3 - lobbyH, d, { kind: 'wall', buildingId: id });
-  const building = { id, x, z, w, d, h: h + .3, roofType: 2, roofRise: 0, wall: glass, roofColor: '#9aa49c', cx: c.cx, cz: c.cz, kind: 'roof', body };
+  // Lobby on the ground floor; above it the tower is hollow: a floor every 3.1 m, a scissor stair
+  // along the back wall, and a lift in the back corner that goes all the way up.
+  const lobbyH = fh + .3, top = h + .3, t = .3;
+  const building = { id, x, z, w, d, h: top, roofType: 2, roofRise: 0, wall: glass, roofColor: '#9aa49c', cx: c.cx, cz: c.cz, kind: 'roof', body: null };
   c.buildings.push(building);
-  const lobby = hollow(W, c, x, z, w, d, .29, lobbyH, .3, { side: 0, u: 0, width: 2.6, height: 2.9 }, glass, { buildingId: id, building });
-  b.box(x, lobbyH - .08, z, w - .2, .16, d - .2, '#e9e3d2'); b.box(x, .3, z, w - .6, .04, d - .6, '#cfc8b4');
-  lobbyFloor(W, c, x, z, lobby, .32, r, id, frame);
+  hollow(W, c, x, z, w, d, lobbyH, top, t, null, glass, { buildingId: id, building });
+  b.box(x, top - .1, z, w, .2, d, '#9aa49c'); W.solid(c, x, top - .1, z, w, .2, d, { kind: 'roof', climbable: false, buildingId: id, building });
+  const lobby = hollow(W, c, x, z, w, d, .29, lobbyH, t, { side: 0, u: 0, width: 2.6, height: 2.9 }, glass, { buildingId: id, building });
+  b.box(x, .3, z, w - .6, .04, d - .6, '#cfc8b4');
+  lobbyFloor(W, c, x, z, { ...lobby, minZ: lobby.minZ + 3.6 }, .32, r, id, frame);
+  // Shaft in the back-right corner, stair strip along the back wall to its left.
+  const inner = { minX: x - w / 2 + t, maxX: x + w / 2 - t, minZ: z - d / 2 + t, maxZ: z + d / 2 - t };
+  const shaftW = 2.5, sx = inner.maxX - shaftW / 2 - .05, sz = inner.minZ + shaftW / 2 + .05;
+  const shaft = { minX: sx - shaftW / 2, maxX: sx + shaftW / 2, minZ: sz - shaftW / 2, maxZ: sz + shaftW / 2 };
+  const lane = 1.45, stairZ0 = inner.minZ + .05, stairX0 = inner.minX + .05, stairX1 = shaft.minX - .35, landing = 1.7;
+  const runX0 = stairX0 + landing, runX1 = stairX1 - landing; // the sloped part runs between the landings
+  const levels = [.32]; for (let k = 1; k < floors; k++) levels.push(lobbyH + (k - 1) * fh);
+  const kits = ['office', 'office', 'living', 'study', 'gym', 'office', 'bedroom', 'cafe', 'kitchen'];
+  const slabColor = '#e9e3d2', wallColor = frame;
+  for (let k = 1; k < floors; k++) {
+    const y = levels[k], below = levels[k - 1];
+    // Holes: the shaft, and the top of the stair that arrives at this level (so a cat on the stair has headroom).
+    const arrivesRight = (k - 1) % 2 === 0, laneZ = stairZ0 + ((k - 1) % 2) * lane; // stair k-1 -> k uses lane (k-1)%2, rising to the right on even k-1
+    const holeStair = arrivesRight ? { minX: runX1 - 1.9, maxX: runX1 + .05, minZ: laneZ, maxZ: laneZ + lane } : { minX: runX0 - .05, maxX: runX0 + 1.9, minZ: laneZ, maxZ: laneZ + lane };
+    slabWithHoles(W, c, inner, y - .08, .16, [shaft, holeStair], slabColor, { kind: 'floor', climbable: false, buildingId: id });
+    // The stair from the level below up to here.
+    const x0 = arrivesRight ? runX0 : runX1, x1 = arrivesRight ? runX1 : runX0;
+    ramp(W, c, x0, below + .02, laneZ + lane / 2, x1, y + .02, laneZ + lane / 2, lane - .1, .14, '#8d8470');
+    b.box(arrivesRight ? stairX0 + landing / 2 : stairX1 - landing / 2, below - .03, laneZ + lane / 2, landing, .06, lane, '#a39c88'); // landing at the foot
+    // Handrail on the open side of the stair strip (a tilted rod: no collider).
+    const rz = stairZ0 + lane * 2 + .05; b.add(GEO.box, (x0 + x1) / 2, (below + y) / 2 + .95, rz, Math.abs(x1 - x0) + .4, .06, .05, '#4a4f4c', 0, 0, Math.atan2(y - below, x1 - x0));
+    for (let k2 = 0; k2 <= 3; k2++) { const px = x0 + (x1 - x0) * k2 / 3, py = below + (y - below) * k2 / 3; b.box(px, py + .5, rz, .05, 1, .05, '#4a4f4c'); }
+    // The room on this floor, kept clear of the stair strip and the shaft.
+    const room = { minX: inner.minX + .1, maxX: inner.maxX - .1, minZ: stairZ0 + lane * 2 + .5, maxZ: inner.maxZ - .1 };
+    const kit = kits[(k + Math.floor(r() * 2)) % kits.length];
+    KITS[kit](W, c, room, y, r, 2);
+    // Call button and floor number by the shaft, a strip of lights, a window band so the floor reads from outside.
+    b.box(shaft.minX - .08, y + 1.1, shaft.maxZ + .3, .12, .18, .12, '#e9e3d2'); b.ball(shaft.minX - .14, y + 1.1, shaft.maxZ + .3, .03, .03, .03, '#e9c04b');
+    b.box(x, y + fh - .25, z + 1, 1.2, .06, .3, '#f6ecc8');
+    if (k % 3 === 1) c.landmarks.push({ id: `${id}:f${k}`, kind: 'floor', x, z: z + 2, radius: 4.5, name: `floor ${k}, ${PLACE_NAMES[kit] || kit}`, y, inside: room });
+  }
+  // The shaft itself: three glass sides and guide rails; open towards the room.
+  for (const [wx, wz, ww, wd] of [[shaft.maxX + .03, sz, .06, shaftW + .1], [sx, shaft.minZ - .03, shaftW + .1, .06], [shaft.minX - .03, sz, .06, shaftW + .1]]) { b.box(wx, (top + .32) / 2, wz, ww, top - .32, wd, '#9fd3e6'); W.solid(c, wx, (top + .32) / 2, wz, ww, top - .32, wd, { kind: 'shaft', climbable: false }); }
+  for (const e of [-1, 1]) b.box(sx + e * (shaftW / 2 - .12), (top + .32) / 2, shaft.minZ + .14, .08, top - .32, .08, '#4a4f4c');
+  b.box(sx, top + .9, sz, shaftW + .4, 1.8, shaftW + .4, '#a9a79a'); W.solid(c, sx, top + .9, sz, shaftW + .4, 1.8, shaftW + .4, { kind: 'wall', buildingId: id, building }); // motor room on the roof
+  c.lifts = c.lifts || []; c.lifts.push({ id: `${id}:lift`, x: sx, z: sz, w: shaftW - .2, d: shaftW - .2, levels, openSide: 0 });
   // Ledges every floor and vertical fins: a facade made for climbing.
-  for (let f = 1; f <= floors; f++) { const y = .3 + f * fh; b.box(x, y, z, w + .5, .16, d + .5, frame); }
+  for (let f = 1; f <= floors; f++) { const y = .3 + f * fh; for (const e of [-1, 1]) { b.box(x + e * (w / 2 + .125), y, z, .25, .16, d + .5, frame); b.box(x, y, z + e * (d / 2 + .125), w + .5, .16, .25, frame); } }
   const fins = Math.floor(w / 1.6);
   for (let k = 0; k <= fins; k++) { const u = -w / 2 + k * (w / fins); b.box(x + u, h / 2 + .3, z + d / 2 + .12, .14, h, .24, frame); b.box(x + u, h / 2 + .3, z - d / 2 - .12, .14, h, .24, frame); }
   const finsD = Math.floor(d / 1.6);
@@ -176,18 +215,37 @@ export function makeTower(W, c, x, z, r, id, tall = 1) {
   W.solid(c, x, 3.6, z + d / 2 + 1.4, 6.5, .22, 2.8, { climbable: false, kind: 'awning' });
   W.pot(c, x + 4.4, z + d / 2 + 2.6, r, 1.2); W.pot(c, x - 4.4, z + d / 2 + 2.6, r, 1.2);
   W.bench(c, x + 7, z + d / 2 + 3, 0); W.bench(c, x - 7, z + d / 2 + 3, 0);
-  // Roof: parapet, plant room, antenna mast, helipad.
-  const top = h + .3;
+  // Roof: parapet, antenna mast, helipad.
   for (const s of [-1, 1]) { b.box(x + s * (w / 2 - .15), top + .4, z, .3, .8, d, frame); b.box(x, top + .4, z + s * (d / 2 - .15), w, .8, .3, frame); W.solid(c, x + s * (w / 2 - .15), top + .4, z, .3, .8, d, { climbable: false }); W.solid(c, x, top + .4, z + s * (d / 2 - .15), w, .8, .3, { climbable: false }); }
-  b.box(x - w * .22, top + 1.2, z - d * .2, 4, 2.4, 3.2, '#a9a79a'); W.solid(c, x - w * .22, top + 1.2, z - d * .2, 4, 2.4, 3.2, { buildingId: id, building, kind: 'wall' });
-  b.cyl(x + w * .25, top + .5, z + d * .25, 2.4, .12, '#8c8a7e'); b.box(x + w * .25, top + .57, z + d * .25, .5, .02, 1.6, '#e9e3d2'); b.box(x + w * .25, top + .57, z + d * .25, 1.6, .02, .4, '#e9e3d2');
-  b.add(GEO.tapered, x + w * .3, top + 4.5, z - d * .3, .12, 9, .12, '#8c8a7e'); W.cylinderSolid(c, x + w * .3, top, z - d * .3, .13, 9, { climbable: true, kind: 'mast' }); b.ball(x + w * .3, top + 9.1, z - d * .3, .18, .18, .18, '#d9544f');
-  c.extras.push({ kind: 'beacon', x: x + w * .3, y: top + 9.1, z: z - d * .3 });
+  b.cyl(x - w * .22, top + .5, z + d * .25, 2.4, .12, '#8c8a7e'); b.box(x - w * .22, top + .57, z + d * .25, .5, .02, 1.6, '#e9e3d2'); b.box(x - w * .22, top + .57, z + d * .25, 1.6, .02, .4, '#e9e3d2');
+  b.add(GEO.tapered, x - w * .3, top + 4.5, z - d * .3, .12, 9, .12, '#8c8a7e'); W.cylinderSolid(c, x - w * .3, top, z - d * .3, .13, 9, { climbable: true, kind: 'mast' }); b.ball(x - w * .3, top + 9.1, z - d * .3, .18, .18, .18, '#d9544f');
+  c.extras.push({ kind: 'beacon', x: x - w * .3, y: top + 9.1, z: z - d * .3 });
   // Window-cleaning cradle part way up: a mid-air resting platform.
   const cy = .3 + Math.floor(floors * .55) * fh - .9; b.box(x + 2, cy, z + d / 2 + .7, 3, .15, 1, '#5f6b66'); W.solid(c, x + 2, cy, z + d / 2 + .7, 3, .15, 1, { climbable: false, kind: 'cradle' });
   for (const s of [-1, 1]) { b.box(x + 2 + s * 1.4, (cy + top) / 2, z + d / 2 + .7, .04, top - cy, .04, '#3f4a46'); b.box(x + 2 + s * 1.4, cy + .4, z + d / 2 + .7, .06, .8, 1, '#5f6b66'); }
   c.landmarks.push({ id, kind: 'tower', x, z, radius: 9, name: 'the tower top', y: top });
   person(c, x + 1.5, z + d / 2 + 2.2, Math.PI, 'suit'); person(c, x - 2, z + d / 2 + 4, r() * TAU, 'suit');
+}
+
+// A floor slab with rectangular holes cut out of it (for shafts and stairwells): the slab is split
+// into the grid the hole edges make, and every cell that is not a hole becomes a box.
+export function slabWithHoles(W, c, bounds, y, thick, holes, color, tag) {
+  const xs = [bounds.minX, bounds.maxX], zs = [bounds.minZ, bounds.maxZ];
+  for (const h of holes) { xs.push(h.minX, h.maxX); zs.push(h.minZ, h.maxZ); }
+  const ux = [...new Set(xs.map(v => +v.toFixed(3)))].filter(v => v >= bounds.minX - 1e-3 && v <= bounds.maxX + 1e-3).sort((a, b) => a - b);
+  const uz = [...new Set(zs.map(v => +v.toFixed(3)))].filter(v => v >= bounds.minZ - 1e-3 && v <= bounds.maxZ + 1e-3).sort((a, b) => a - b);
+  const cells = [];
+  for (let i = 0; i < ux.length - 1; i++) for (let j = 0; j < uz.length - 1; j++) {
+    const x0 = ux[i], x1 = ux[i + 1], z0 = uz[j], z1 = uz[j + 1], cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    if (x1 - x0 < .02 || z1 - z0 < .02) continue;
+    if (holes.some(h => cx > h.minX && cx < h.maxX && cz > h.minZ && cz < h.maxZ)) continue;
+    cells.push({ x0, x1, z0, z1 });
+  }
+  // Merge cells along x where they share the same z band to keep the collider count down.
+  cells.sort((a, b) => a.z0 - b.z0 || a.x0 - b.x0);
+  const merged = [];
+  for (const cell of cells) { const last = merged[merged.length - 1]; if (last && Math.abs(last.z0 - cell.z0) < 1e-6 && Math.abs(last.z1 - cell.z1) < 1e-6 && Math.abs(last.x1 - cell.x0) < 1e-6) last.x1 = cell.x1; else merged.push({ ...cell }); }
+  for (const m of merged) { const cx = (m.x0 + m.x1) / 2, cz = (m.z0 + m.z1) / 2; c.batch.box(cx, y, cz, m.x1 - m.x0, thick, m.z1 - m.z0, color); W.solid(c, cx, y, cz, m.x1 - m.x0, thick, m.z1 - m.z0, tag); }
 }
 
 // ---- parkour playground ----------------------------------------------------------------------

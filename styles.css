@@ -269,3 +269,19 @@ input[type=range]{width:150px;accent-color:var(--orange);flex-shrink:0}
 }
 @media(max-width:620px){.help-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* wardrobe */
+.wardrobe-modal{width:min(760px,100%)}
+.wardrobe{display:grid;grid-template-columns:minmax(200px,260px) 1fr;gap:16px;align-items:start;margin:12px 0 16px}
+.wardrobe-stage{position:relative;aspect-ratio:1;border-radius:16px;background:radial-gradient(circle at 50% 35%,#fff7e6,#f0e4c8 70%,#e6d7b6);box-shadow:inset 0 0 0 2px var(--ink);overflow:hidden;touch-action:none;cursor:grab}
+.wardrobe-stage canvas{width:100%;height:100%;display:block}
+.wardrobe-stage small{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:11px;color:var(--ink-2);pointer-events:none}
+.wardrobe-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.wardrobe-tabs .tab{position:relative;padding:7px 11px;border-radius:999px;border:2px solid var(--ink);background:var(--paper-2);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.wardrobe-tabs .tab.active{background:var(--ink);color:var(--paper)}
+.wardrobe-tabs .tab.has-new::after{content:"";position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#e5742f;border:2px solid var(--paper)}
+.wardrobe .hat-list{margin:0;max-height:min(46vh,420px);overflow:auto;padding-right:4px;grid-template-columns:repeat(auto-fill,minmax(136px,1fr))}
+.hat-card.collect .swatch{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(0,0,0,.25);margin-bottom:4px}
+.hat-card.collect.locked .swatch{filter:grayscale(1);opacity:.5}
+.hat-card.tally{grid-column:1/-1;background:var(--paper-2)}
+@media (max-width:640px){.wardrobe{grid-template-columns:1fr}.wardrobe-stage{max-width:220px;margin:0 auto}.wardrobe .hat-list{max-height:none}}

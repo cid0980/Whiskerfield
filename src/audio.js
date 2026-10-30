@@ -53,6 +53,8 @@ export class NeighborhoodAudio {
     else{this.tone(330,t,.1,.03*v,'triangle',120);}}
   quack(small=false,idle=false){if(!this.context)return;const t=this.context.currentTime,f=small?620:330,v=idle?.02:.035;this.tone(f,t,.12,v,'sawtooth',f*.72);if(!idle)this.tone(f*1.05,t+.15,.1,v*.8,'sawtooth',f*.7);if(small)this.tone(f*1.2,t+.26,.08,v*.6,'sawtooth',f*.9);}
   caw(){if(!this.context)return;const t=this.context.currentTime;this.tone(520,t,.22,.03,'sawtooth',380);this.tone(500,t+.3,.2,.025,'sawtooth',360);}
+  chime(dist=0){if(!this.context)return;const t=this.context.currentTime,v=Math.max(.003,.05*Math.min(1,14/Math.max(1,dist)));this.tone(1318,t,.35,v,'sine',1318);this.tone(1760,t+.16,.5,v*.8,'sine',1760);}
+  hum(dist=0){if(!this.context)return;const t=this.context.currentTime,v=Math.max(.002,.02*Math.min(1,10/Math.max(1,dist)));this.tone(95,t,1.4,v,'triangle',110);this.tone(190,t,1.4,v*.4,'sine',200);}
   whistle(dist=0){if(!this.context)return;const t=this.context.currentTime,v=Math.max(.004,.05*Math.min(1,40/Math.max(1,dist)));this.tone(880,t,.5,v,'square',870);this.tone(1320,t,.5,v*.5,'square',1310);this.tone(880,t+.6,.9,v,'square',860);this.tone(1320,t+.6,.9,v*.5,'square',1300);}
   chuff(dist=0,k=.5){if(!this.context)return;const t=this.context.currentTime,v=Math.max(.002,.03*Math.min(1,30/Math.max(1,dist)));this.tone(120+k*60,t,.09,v,'sawtooth',60);this.tone(1800,t,.05,v*.3,'square',900);}
   jet(){if(!this.context)return;const t=this.context.currentTime;for(let i=0;i<10;i++)this.tone(90+i*7,t+i*.9,1.2,.025+i*.002,'sawtooth',110+i*9);for(let i=0;i<6;i++)this.tone(2200+i*180,t+6+i*.5,1,.006,'sine',2600+i*180);}

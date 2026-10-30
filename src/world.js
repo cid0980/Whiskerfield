@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments, makeRailway, makeAirport, railTrack } from './places.js';
-import { hollow, doorway, furnishHouse, FLOORS, PLACE_NAMES } from './rooms.js';
+import { hollow, doorway, furnishHouse, FLOORS, PLACE_NAMES, KITS } from './rooms.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -247,7 +247,7 @@ export class World {
 
   createChunk(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
-    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [] };
+    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [], lifts: [] };
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const grass = country.grass[hash(cx, cz, this.seed, 4) % 4];
     c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
@@ -391,6 +391,7 @@ export class World {
     if (special === 0) { w = 15 + r() * 3; d = 13 + r() * 3; floors = 2 + Math.floor(r() * 2); h = floors * 3 + .3; wall = ['#c9a684','#d2b795','#c4a083','#d6c1a0'][Math.floor(r()*4)]; roofColor = roofs[Math.floor(r()*3)]; roofType = 0; }
     if (special === 1) { w = 14 + r() * 4; d = 13 + r() * 3; h = 6.5 + r() * 1.5; floors = 2; wall = ['#d8cbb2','#d2c5aa','#cbcbb4','#d6c4a4'][Math.floor(r()*4)]; roofColor = roofs[3+Math.floor(r()*3)]; roofType = 2; }
     if (special === 2) { w = 14 + r() * 3; d = 14 + r() * 3; h = 9 + r() * 2; floors = 3; wall = ['#aeb9b2','#b3c0bc','#b9c0ae','#a8b7ab'][Math.floor(r()*4)]; roofColor = roofs[Math.floor(r()*roofs.length)]; roofType = 3; }
+    const lotX = x, lotZ = z;
     x += (r() - .5) * 1.6; z += (r() - .5) * 1.6;
     const ridgeX = r() > .5;
     const roofRise = roofType === 0 ? 2.4 + r() * 2 : roofType === 1 ? 2.5 + r() * 1.7 : 0;
@@ -409,7 +410,15 @@ export class World {
     const floorColor = FLOORS[Math.floor(r() * FLOORS.length)];
     b.box(x, fy - .05, z, w - .1, .1, d - .1, floorColor); this.solid(c, x, fy / 2, z, w, fy, d, { climbable: false, kind: 'floor', buildingId: id });
     b.box(x, floorH - .08, z, w - .2, .16, d - .2, '#efe8d6');
-    const inside = hollow(this, c, x, z, w, d, 0, floorH, t, { side: doorSide, u: doorU, width: doorW, height: doorH }, wall, { buildingId: id, building });
+    // Some houses grow a wing: a lower L-shaped annexe off one side with its own pitched roof,
+    // reached through an opening in the ground-floor wall.
+    let wing = null;
+    if (special < 0 && r() > .5) {
+      const sides = [0, 1, 2, 3].filter(sd => { const sa = sd * Math.PI / 2, reach = sd % 2 ? w / 2 + Math.round(Math.sin(sa)) * (x - lotX) : d / 2 + Math.round(Math.cos(sa)) * (z - lotZ); return sd !== doorSide && reach + 4.75 <= 12.1; });
+      if (sides.length) { const ws = sides[Math.floor(r() * sides.length)]; wing = { side: ws, u: (r() - .5) * ((ws % 2 ? d : w) - 9), ww: 6.4 + r() * 1.2, wd: 4.4 + r() * .6, h: floorH + .25 }; }
+    }
+    const inside = hollow(this, c, x, z, w, d, 0, floorH, t, { side: doorSide, u: doorU, width: doorW, height: doorH }, wall, { buildingId: id, building }, wing ? { side: wing.side, u: wing.u, width: 1.9, height: 2.25 } : null);
+    if (wing) this.wing(c, building, wing, fy, t, floorColor, r, id);
     for (const sd of [0, 1, 2, 3]) { const a = sd * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)); b.box(x + nx * (sd % 2 ? w / 2 - t - .02 : 0), fy + .06, z + nz * (sd % 2 ? 0 : d / 2 - t - .02), sd % 2 ? .05 : w - 2 * t, .12, sd % 2 ? d - 2 * t : .05, '#efe8d6'); } // skirting
     const rooms = furnishHouse(this, c, inside, fy, floorH, r, doorSide, doorU, wall, id, special === 0 ? 'bakery' : null);
     c.landmarks.push({ id: id + ':in', kind: 'house', x, z, radius: 3, name: `${PLACE_NAMES[rooms[0].kit]} and ${PLACE_NAMES[rooms[1].kit]}`, inside, y: fy, kits: rooms.map(k => k.kit) });
@@ -429,6 +438,7 @@ export class World {
       for (let f = 0; f < floors; f++) for (let col = 0; col < cols; col++) {
         const u = (col - (cols - 1) / 2) * (faceW / (cols + .45));
         if (side === doorSide && f === 0 && Math.abs(u - doorU) < 2) continue;
+        if (wing && side === wing.side && f === 0 && Math.abs(u - wing.u) < wing.ww / 2 + 1) continue;
         if (r() < .07) continue;
         const wx = x + nx * (halfD + .055) + tx * u, wz = z + nz * (halfD + .055) + tz * u;
         const wy = f * floorH + 1.65, ww = 1.12 + r() * .32, wh = 1.5 + r() * .24;
@@ -541,6 +551,37 @@ export class World {
     return b.h;
   }
 
+  wing(c, building, wing, fy, t, floorColor, r, id) {
+    const b = c.batch, { x, z, w, d, wall, roofColor } = building, a = wing.side * Math.PI / 2;
+    const nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)), tx = nz, tz = -nx, half = wing.side % 2 ? w / 2 : d / 2;
+    // The wing butts up against the main wall, overlapping it by the wall thickness.
+    const cxw = x + nx * (half + wing.wd / 2 - t) + tx * wing.u, czw = z + nz * (half + wing.wd / 2 - t) + tz * wing.u;
+    const ww = wing.side % 2 ? wing.wd : wing.ww, wd = wing.side % 2 ? wing.ww : wing.wd, h = wing.h;
+    const sub = { id: id + ':w', x: cxw, z: czw, w: ww, d: wd, h, roofType: 0, roofRise: 1.7, ridgeX: wing.side % 2 === 1, wall, roofColor, cx: c.cx, cz: c.cz, kind: 'roof', parent: building };
+    c.buildings.push(sub);
+    b.box(cxw, .18, czw, ww + .3, .45, wd + .3, '#b8b6a0');
+    b.box(cxw, fy - .05, czw, ww - .1, .1, wd - .1, floorColor); this.solid(c, cxw, fy / 2, czw, ww, fy, wd, { climbable: false, kind: 'floor', buildingId: id });
+    // Walls: the side facing the house gets the opening (the house wall stands right there).
+    const facing = (wing.side + 2) % 4;
+    const room = hollow(this, c, cxw, czw, ww, wd, 0, h, t, { side: facing, u: 0, width: 1.9, height: 2.25 }, wall, { buildingId: id, building: sub });
+    b.box(cxw, h - .1, czw, ww - .1, .2, wd - .1, '#efe8d6'); this.solid(c, cxw, h - .1, czw, ww, .2, wd, { kind: 'ceiling', climbable: false, buildingId: id });
+    b.box(cxw, h - .12, czw, ww + .3, .25, wd + .3, '#e8dfc4');
+    c.colliders.push({ shape: 'roof', building: sub, kind: 'roof', climbable: false, minX: cxw - ww / 2 - .55, maxX: cxw + ww / 2 + .55, minY: h, maxY: h + 1.7, minZ: czw - wd / 2 - .55, maxZ: czw + wd / 2 + .55 });
+    this.gable(c, sub, 1.7, roofColor, sub.ridgeX);
+    const kit = ['study', 'bedroom', 'workshop', 'nursery'][Math.floor(r() * 4)];
+    KITS[kit](this, c, room, fy, r, facing);
+    sub.kit = kit;
+    c.landmarks.push({ id: id + ':w', kind: 'house', x: cxw, z: czw, radius: 2.5, name: `${PLACE_NAMES[kit]} in the wing`, inside: room, y: fy, kits: [kit] });
+    // One window on each free side.
+    for (const sd of [0, 1, 2, 3]) {
+      if (sd === facing) continue;
+      const sa = sd * Math.PI / 2, snx = Math.sin(sa), snz = Math.cos(sa), sh = sd % 2 ? ww / 2 : wd / 2;
+      const wx = cxw + snx * (sh + .055), wz = czw + snz * (sh + .055), wy = 1.6;
+      b.box(wx, wy, wz, 1.3, 1.5, .16, '#ede5cd', sa); b.box(wx + snx * .1, wy, wz + snz * .1, 1.08, 1.3, .06, r() > .7 ? '#dfcf97' : '#647e78', sa);
+      b.box(wx + snx * .13, wy - .85, wz + snz * .13, 1.5, .16, .37, '#ded5bb', sa);
+      this.solid(c, wx + snx * .13, wy - .85, wz + snz * .13, sd % 2 ? .37 : 1.5, .16, sd % 2 ? 1.5 : .37, { climbable: false, kind: 'sill' });
+    }
+  }
   gable(c, b, rise, color, ridgeX) {
     const w = b.w / 2 + .55, d = b.d / 2 + .55;
     // Ridge along z by default; for ridgeX the slopes run along z and the ridge along x, so the

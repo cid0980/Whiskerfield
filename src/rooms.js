@@ -236,8 +236,50 @@ export const KITS = {
 };
 function ladderBox(b, x, y, z, a) { for (const s of [-.2, .2]) b.box(x + Math.cos(a) * s, y + .75, z - Math.sin(a) * s, .05, 1.5, .05, '#e9e3d2'); for (let k = 0; k < 5; k++) b.box(x, y + .2 + k * .3, z, .45, .04, .04, '#e9e3d2', a); }
 
+
+// An open-plan office floor: rows of desks with screens and chairs, a partition or two, a plant,
+// a water cooler, and somebody who has been at the desk since morning.
+KITS.office = function (W, c, room, fy, r, doorSide) {
+  const b = c.batch, w = room.maxX - room.minX, d = room.maxZ - room.minZ, wood = pick(r, WOOD), cloth = pick(r, CLOTH);
+  const cols = Math.max(1, Math.floor((w - 2.4) / 3.2)), rows = Math.max(1, Math.floor((d - 2.8) / 3.4));
+  let n = 0;
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+    const dx = room.minX + 1.6 + i * ((w - 3.2) / Math.max(1, cols - 1) || 0) + (cols === 1 ? w / 2 - 1.6 : 0), dz = room.minZ + 2 + j * ((d - 4) / Math.max(1, rows - 1) || 0) + (rows === 1 ? d / 2 - 2 : 0);
+    table(W, c, dx, fy, dz, 1.7, .8, wood, '#4a4f4c');
+    b.box(dx + .2, fy + 1.02, dz - .1, .55, .36, .03, '#2f3331'); b.box(dx + .2, fy + .8, dz - .1, .08, .1, .1, '#6f7976'); b.box(dx - .35, fy + .78, dz + .15, .36, .02, .14, '#e9e3d2');
+    if (r() > .5) b.box(dx + .55, fy + .8, dz + .2, .14, .12, .14, '#c9524a'); // a mug
+    if (r() > .6) { for (let k = 0; k < 3; k++) b.box(dx - .5 + k * .05, fy + .78 + k * .06, dz - .2, .3, .05, .22, k % 2 ? '#f1e8d2' : '#c7b2d9'); }
+    chair(W, c, dx, fy, dz + .75, Math.PI, cloth);
+    if (n++ % 3 === 0 && r() > .3) person(c, dx, dz + .75, Math.PI, 'suit', fy, 'sit');
+    if (j === 0 && r() > .4) { b.box(dx, fy + .7, dz - .55, 1.9, 1.4, .06, '#9aa49c'); W.solid(c, dx, fy + .7, dz - .55, 1.9, 1.4, .06, { kind: 'partition', climbable: false }); }
+  }
+  // A plant in the corner, a water cooler, a filing cabinet with one drawer out, a clock.
+  b.add(GEO.pot, room.maxX - .8, fy + .3, room.maxZ - .8, .35, .6, .35, '#8f5f4e'); for (let k = 0; k < 7; k++) b.box(room.maxX - .8 + Math.cos(k * .9) * .18, fy + 1.1 + k * .07, room.maxZ - .8 + Math.sin(k * .9) * .18, .14, .8, .04, k % 2 ? '#5f7f4a' : '#6f9a4f', 0, k * .9, 0);
+  b.box(room.minX + .6, fy + .55, room.maxZ - .6, .4, 1.1, .4, '#e9e3d2'); b.add(GEO.cylinder, room.minX + .6, fy + 1.4, room.maxZ - .6, .19, .6, .19, '#9fd3e6'); W.solid(c, room.minX + .6, fy + .8, room.maxZ - .6, .42, 1.6, .42, { kind: 'cooler', climbable: false });
+  b.box(room.minX + 1.4, fy + .65, room.maxZ - .4, .5, 1.3, .6, '#8a9893'); b.box(room.minX + 1.4, fy + .95, room.maxZ - .9, .44, .3, .5, '#8a9893'); W.solid(c, room.minX + 1.4, fy + .65, room.maxZ - .55, .5, 1.3, .9, { kind: 'cabinet', climbable: true });
+  b.cyl(room.minX + w / 2, fy + 2.3, room.maxZ - .03, .25, .04, '#f1e8d2', Math.PI / 2); b.box(room.minX + w / 2, fy + 2.36, room.maxZ - .06, .02, .14, .02, '#2f3331'); b.box(room.minX + w / 2 + .05, fy + 2.3, room.maxZ - .06, .1, .02, .02, '#2f3331');
+  for (let k = -1; k <= 1; k++) b.box(room.minX + w / 2 + k * 3, fy + 2.85, room.minZ + d / 2, 1.2, .08, .3, '#f6ecc8'); // strip lights
+  rug(b, room.minX + w / 2, fy, room.minZ + d / 2, Math.min(w - 2, 5), Math.min(d - 2, 4), '#8ea48c');
+};
+KITS.gym = function (W, c, room, fy, r) {
+  const b = c.batch, w = room.maxX - room.minX, d = room.maxZ - room.minZ, cx = (room.minX + room.maxX) / 2, cz = (room.minZ + room.maxZ) / 2;
+  rug(b, cx, fy, cz, w - 1.2, d - 1.2, '#4f6f96');
+  for (let k = 0; k < Math.min(4, Math.floor(w / 2.2)); k++) { const tx = room.minX + 1.3 + k * 2.2, tz = room.minZ + 1.6; b.box(tx, fy + .5, tz, 1, .1, 2, '#2f3331'); b.box(tx, fy + 1.1, tz - .95, .9, 1.1, .1, '#8a9893'); W.solid(c, tx, fy + .5, tz, 1, .9, 2, { kind: 'treadmill', climbable: true }); if (k % 2 === 0) person(c, tx, tz + .3, Math.PI, 'kid', fy + .55); }
+  for (let k = 0; k < 3; k++) { const mx = room.maxX - 1.2, mz = room.minZ + 1.2 + k * 1.1; b.box(mx, fy + .17, mz, 1.6, .08, .3, '#6f7976'); for (const s of [-1, 1]) b.cyl(mx + s * .7, fy + .2, mz, .22, .1, '#2f3331', Math.PI / 2); }
+  b.box(cx, fy + 1.1, room.maxZ - .25, 3, 2, .06, '#dfe3e6'); // mirror
+  b.ball(room.minX + 1, fy + .5, room.maxZ - 1, .5, .5, .5, '#c9524a'); W.ellipsoidSolid(c, room.minX + 1, fy + .5, room.maxZ - 1, .5, .5, .5, { kind: 'ball', climbable: true });
+};
+KITS.cafe = function (W, c, room, fy, r) {
+  const b = c.batch, w = room.maxX - room.minX, d = room.maxZ - room.minZ, wood = pick(r, WOOD);
+  const kx = room.minX + 2, kz = room.maxZ - .9; b.box(kx, fy + .5, kz, 3.4, 1, 1, wood); b.box(kx, fy + 1.03, kz, 3.5, .06, 1.1, '#e3dcc6'); W.solid(c, kx, fy + .55, kz, 3.5, 1.1, 1.1, { kind: 'counter', climbable: false });
+  b.box(kx - .8, fy + 1.3, kz, .5, .45, .4, '#8a9893'); for (let k = 0; k < 4; k++) b.box(kx + .4 + k * .25, fy + 1.1, kz - .2, .18, .14, .18, k % 2 ? '#f1e8d2' : '#c9524a');
+  person(c, kx, kz - 1, Math.PI, 'barista', fy);
+  for (let i = 0; i < Math.min(4, Math.floor((w - 2) / 2.2)); i++) { const tx = room.minX + 1.4 + i * 2.2, tz = room.minZ + d * .4; b.cyl(tx, fy + .72, tz, .55, .05, wood); b.cyl(tx, fy + .36, tz, .06, .72, '#4a4f4c'); W.cylinderSolid(c, tx, fy, tz, .55, .75, { kind: 'table', climbable: false }); for (const a of [0, Math.PI]) chair(W, c, tx + Math.sin(a) * .85, fy, tz + Math.cos(a) * .85, a + Math.PI, '#8f5f4e'); if (i % 2 === 1) person(c, tx, tz + .85, 0, 'customer', fy, 'sit'); }
+  b.box(room.minX + w / 2, fy + 1.9, room.minZ + .05, 3, .9, .05, '#2f3331'); for (let k = 0; k < 5; k++) b.box(room.minX + w / 2 - 1.2 + k * .6, fy + 1.9, room.minZ + .09, .4, .05, .02, '#f1e8d2'); // menu board
+};
+
 export const HOUSE_KITS = ['living', 'kitchen', 'bedroom', 'study', 'workshop', 'nursery', 'atelier'];
-export const PLACE_NAMES = { living: 'a sitting room', kitchen: 'a kitchen', bedroom: 'a bedroom', study: 'a study', workshop: 'a workshop', bakery: 'the bakery', nursery: 'a nursery', atelier: 'a painter’s studio' };
+export const PLACE_NAMES = { office: 'an office', gym: 'a gym', cafe: 'a café', living: 'a sitting room', kitchen: 'a kitchen', bedroom: 'a bedroom', study: 'a study', workshop: 'a workshop', bakery: 'the bakery', nursery: 'a nursery', atelier: 'a painter’s studio' };
 
 // Split a house interior into two rooms with a partition and a doorway, and furnish each.
 export function furnishHouse(W, c, inside, fy, ceil, r, doorSide, doorU, wallColor, id, forced = null) {

@@ -291,3 +291,78 @@ test('PWA shell, landscape manifest, offline cache, and install button rules', a
   expect(await page.evaluate(() => window.__whiskerfield.getState().installed)).toBe(true);
   await expect(page.locator('#offline-label')).toHaveText('Installed');
 });
+
+test('housekeeping: seeds, map drag, adaptive quality, hearts, saves, labels, wake lock', async ({ page }) => {
+  const errors = await enter(page);
+  // Settings and a save in town A.
+  await page.evaluate(() => { const g = window.__whiskerfield; g.teleport(123.4, 0, -77.7); g.save(); });
+  await page.click('#settings-button');
+  await page.locator('#sensitivity-slider').fill('55');
+  await expect(page.locator('#sensitivity-label')).toHaveText('55%');
+  await expect(page.locator('#volume-label')).toHaveText(/%$/);
+  await page.keyboard.press('Escape');
+  // Visiting another town by URL starts fresh there but keeps the settings.
+  await page.goto('/?test=1&seed=fern-808');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready);
+  const fresh = await page.evaluate(() => { const g = window.__whiskerfield; return { seed: g.world.seedText, pos: g.player.pos.toArray(), settings: g.getSettings() }; });
+  expect(fresh.seed).toBe('fern-808');
+  expect(Math.hypot(fresh.pos[0] - 123.4, fresh.pos[2] + 77.7)).toBeGreaterThan(50);
+  expect(fresh.settings.sensitivity).toBeCloseTo(.55, 2);
+  // Back in town A the old spot is still remembered.
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready);
+  const back = await page.evaluate(() => window.__whiskerfield.player.pos.toArray());
+  expect(Math.hypot(back[0] - 123.4, back[2] + 77.7)).toBeLessThan(0.1);
+  await page.click('#start-button');
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('welcome')).opacity === '0');
+
+  // Map: the seed is shown and dragging tracks the finger exactly.
+  await page.keyboard.press('m');
+  await expect(page.locator('#map-seed')).toHaveText('Seed moss-424');
+  const canvas = await page.locator('#map-canvas').boundingBox();
+  const c0 = await page.evaluate(() => ({ ...window.__whiskerfield.mapCenter() }));
+  await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + canvas.width / 2 + 100, canvas.y + canvas.height / 2 + 50, { steps: 5 });
+  await page.mouse.up();
+  const c1 = await page.evaluate(() => ({ ...window.__whiskerfield.mapCenter() }));
+  const perPx = 1 / (3.15 * canvas.width / 960);
+  expect(c0.x - c1.x).toBeCloseTo(100 * perPx, 1);
+  expect(c0.z - c1.z).toBeCloseTo(50 * perPx, 1);
+  await page.keyboard.press('Escape');
+
+  // Adaptive quality degrades under load and recovers after smooth frames.
+  const q = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {};
+    out.start = g.getQuality();
+    for (let i = 0; i < 400; i++) g.adapt(60); out.slow = g.getQuality();
+    for (let i = 0; i < 3000; i++) g.adapt(12); out.recovered = g.getQuality();
+    return out;
+  });
+  expect(q.slow.level).toBeGreaterThan(0);
+  expect(q.slow.pixelRatio).toBeLessThan(q.start.pixelRatio);
+  expect(q.recovered.level).toBe(0);
+  expect(q.recovered.pixelRatio).toBeCloseTo(q.start.pixelRatio, 2);
+  await expect(page.locator('#toast')).toContainText('Softening the picture');
+
+  // Each neighbour owns their heart material; saves only happen when something changed.
+  const misc = await page.evaluate(async () => {
+    const g = window.__whiskerfield;
+    const mats = new Set(g.people.list.map(p => p.heart.material));
+    let writes = 0; const orig = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = (k, v) => { writes++; orig(k, v); };
+    g.hold.x = g.hold.y = 0; g.save();
+    const after = writes;
+    for (let i = 0; i < 60 * 30; i++) g.step(1 / 60); // 30 idle seconds
+    const idle = writes - after;
+    g.hold.y = -1; for (let i = 0; i < 60 * 7; i++) g.step(1 / 60); g.hold.y = 0;
+    const moving = writes - after - idle;
+    localStorage.setItem = orig;
+    return { people: g.people.list.length, mats: mats.size, idle, moving, wake: g.platformCalls.some(c => c.name === 'wakelock') || !navigator.wakeLock };
+  });
+  expect(misc.mats).toBe(misc.people);
+  expect(misc.idle).toBe(0);
+  expect(misc.moving).toBeGreaterThanOrEqual(1);
+  expect(misc.wake).toBe(true);
+  expect(errors).toEqual([]);
+});

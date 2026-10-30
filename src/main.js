@@ -11,11 +11,21 @@ const clamp = THREE.MathUtils.clamp;
 const SAVE_KEY = 'whiskerfield.journey.v1';
 const VERSION = '1.2';
 const mobile = platform.coarse;
-const BASE_SPEED = 7, SPRINT_SPEED = 12.5, STEP = 1 / 90;
+const BASE_SPEED = 7, SPRINT_SPEED = 12.5, STEP = 1 / 90, MAP_SCALE = 3.15;
 const params = new URLSearchParams(location.search);
 const defaultSeed = () => ['clover', 'willow', 'honey', 'fern', 'peach', 'moss'][Math.floor(Math.random() * 6)] + '-' + Math.floor(100 + Math.random() * 900);
 let saved = null;
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s?.version === 1 && typeof s.seed === 'string') saved = s; } catch {}
+// A different town in the URL means a fresh journey there: position and discoveries belong to the old seed, settings travel with you.
+// Each town keeps its own journey, so a bookmarked seed brings you back to where you left it.
+const urlSeed = params.get('seed')?.trim().slice(0, 40) || null;
+const stashJourney = s => { if (s?.seed) try { localStorage.setItem(SAVE_KEY + ':' + s.seed, JSON.stringify({ ...s, settings: undefined })); } catch {} };
+const loadJourney = seed => { try { const j = JSON.parse(localStorage.getItem(SAVE_KEY + ':' + seed)); return j?.version === 1 && j.seed === seed ? j : null; } catch { return null; } };
+if (saved && urlSeed && urlSeed !== saved.seed) {
+  stashJourney(saved);
+  const prior = loadJourney(urlSeed);
+  saved = prior ? { ...prior, settings: saved.settings } : { version: 1, settings: saved.settings, started: saved.started };
+}
 const settings = { audio: true, volume: .4, sensitivity: .7, shadows: !mobile, reducedMotion: matchMedia('(prefers-reduced-motion:reduce)').matches, immersive: true, ...saved?.settings };
 const validPoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z) && Math.abs(p.x) < 1e6 && Math.abs(p.z) < 1e6 && p.y >= 0 && p.y < 100;
 const player = createPlayer(validPoint(saved?.position) ? { ...saved.position, heading: Number.isFinite(saved?.heading) ? saved.heading : .55 } : null);
@@ -41,8 +51,11 @@ const events = { jump: () => audio.jump(), land: () => audio.land(), mantle: () 
 // Test-only virtual controller (merged into the real input when ?test=1 is used).
 const hold = { x: 0, y: 0, climb: false, sprint: false, jump: false, jumpHeld: false };
 
+let lastSaved = null, saveDirty = false;
+const markDirty = () => { saveDirty = true; };
 function save() {
   if (!world) return;
+  saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), friends: friendsMade, settings, started })); }
   catch { if (!storageWarning) { storageWarning = true; toast('This browser can’t save your journey. Try leaving private browsing.', 'note', 5000); } }
 }
@@ -59,9 +72,9 @@ function syncSettings() {
     $(id).classList.toggle('on', !!settings[key]); $(id).setAttribute('aria-checked', String(!!settings[key]));
   }
   $('volume-slider').value = Math.round(settings.volume * 100); $('volume-label').textContent = Math.round(settings.volume * 100) + '%';
-  $('sensitivity-slider').value = Math.round(settings.sensitivity * 100);
+  $('sensitivity-slider').value = Math.round(settings.sensitivity * 100); $('sensitivity-label').textContent = Math.round(settings.sensitivity * 100) + '%';
   setIcon($('sound-button'), settings.audio ? '#i-sound' : '#i-muted'); $('sound-button').setAttribute('aria-label', settings.audio ? 'Turn sound off' : 'Turn sound on');
-  if (renderer) renderer.shadowMap.enabled = settings.shadows;
+  if (renderer) applyQuality();
   if (leafMesh) leafMesh.count = settings.reducedMotion ? 12 : 48;
 }
 function clearInput() {
@@ -85,7 +98,7 @@ function closeModal() {
 }
 function start() {
   if (!ready || started) return;
-  started = true; resting = false; playTime = 0; document.body.classList.add('playing'); document.body.classList.remove('resting');
+  started = true; resting = false; playTime = 0; document.body.classList.add('playing'); document.body.classList.remove('resting'); platform.keepAwake(true);
   $('welcome').setAttribute('aria-hidden', 'true'); $('welcome').inert = true;
   $('world').focus({ preventScroll: true }); if (settings.audio) audio.start(); save();
   if (settings.immersive) platform.goImmersive().then(syncOrientation);
@@ -119,7 +132,7 @@ function init() {
   scene.add(sun); scene.add(sun.target);
   const groundTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128); for (let i = 0; i < 2400; i++) { x.fillStyle = `rgba(60,75,45,${Math.random() * .1})`; x.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(180, 180); return t; })();
   ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: '#93a86f', roughness: 1, map: groundTex })); ground.rotation.x = -Math.PI / 2; ground.position.y = -.45; ground.receiveShadow = true; scene.add(ground);
-  createWorld(params.get('seed') || saved?.seed || defaultSeed());
+  createWorld(urlSeed || saved?.seed || defaultSeed());
   cat = new Cat(scene, CAT.scale); cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
   createAtmosphere(); createUI(); syncSettings(); updateCounts();
   cameraTarget.copy(player.pos); updateCamera(1, true);
@@ -129,7 +142,7 @@ function init() {
   requestAnimationFrame(() => { requestAnimationFrame(() => { $('loading').classList.add('done'); setTimeout(() => $('loading').hidden = true, 700); }); });
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
-    player, get world() { return world; }, get people() { return people; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); }, discover: checkDiscoveries, platformCalls: platform.calls,
+    player, get world() { return world; }, get people() { return people; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); }, discover: checkDiscoveries, platformCalls: platform.calls,
     getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, friends: friendsMade, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
     teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
@@ -179,7 +192,7 @@ function createUI() {
   $('motion-toggle').addEventListener('click', () => { settings.reducedMotion = !settings.reducedMotion; syncSettings(); save(); });
   $('immersive-toggle').addEventListener('click', () => { settings.immersive = !settings.immersive; syncSettings(); save(); });
   $('volume-slider').addEventListener('input', e => { settings.volume = Number(e.target.value) / 100; audio.setVolume(settings.volume); $('volume-label').textContent = e.target.value + '%'; save(); });
-  $('sensitivity-slider').addEventListener('input', e => { settings.sensitivity = Number(e.target.value) / 100; save(); });
+  $('sensitivity-slider').addEventListener('input', e => { settings.sensitivity = Number(e.target.value) / 100; $('sensitivity-label').textContent = e.target.value + '%'; save(); });
   $('new-world-button').addEventListener('click', () => $('new-world-confirm').hidden = false);
   $('cancel-new-world').addEventListener('click', () => $('new-world-confirm').hidden = true);
   $('confirm-new-world').addEventListener('click', newWorld);
@@ -253,7 +266,7 @@ function createUI() {
   $('touch-run').addEventListener('pointerdown', e => { e.preventDefault(); setRun(!touchRun); });
   const map = $('map-canvas');
   map.addEventListener('pointerdown', e => { map.setPointerCapture(e.pointerId); mapDrag = { x: e.clientX, y: e.clientY }; });
-  map.addEventListener('pointermove', e => { if (!mapDrag) return; const scale = 3 * (map.clientWidth / 960); mapCenter.x -= (e.clientX - mapDrag.x) / scale; mapCenter.z -= (e.clientY - mapDrag.y) / scale; mapDrag = { x: e.clientX, y: e.clientY }; drawMap(); });
+  map.addEventListener('pointermove', e => { if (!mapDrag) return; const scale = MAP_SCALE * (map.clientWidth / 960); mapCenter.x -= (e.clientX - mapDrag.x) / scale; mapCenter.z -= (e.clientY - mapDrag.y) / scale; mapDrag = { x: e.clientX, y: e.clientY }; drawMap(); });
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) map.addEventListener(ev, () => mapDrag = null);
   syncOrientation();
 }
@@ -261,6 +274,7 @@ function createUI() {
 function markInstalled() { installed = true; installPrompt = null; platform.rememberInstalled(); syncInstall(); }
 
 function newWorld() {
+  stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), friends: friendsMade, started });
   people.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); friendsMade = 0;
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
@@ -290,6 +304,12 @@ function simulate(dt) {
     input.climb = explicitClimb || scramble;
     const result = stepPlayer(player, input, physics, h, events);
     wallHint = result.wall;
+    saveTimer += h;
+    if (saveTimer > 5) {
+      saveTimer = 0;
+      const moved = !lastSaved || Math.hypot(player.pos.x - lastSaved.x, player.pos.z - lastSaved.z) > .3 || Math.abs(cameraYaw - lastSaved.yaw) > .05;
+      if (saveDirty || moved) save();
+    }
     // A scramble lasts until the top (or until the stick is released), never a single frame.
     if (!player.climbing || amount < .3) scramble = false;
   }
@@ -418,7 +438,7 @@ function updateBubble() {
 }
 
 function drawMap() {
-  if (!mapCenter) return; const canvas = $('map-canvas'), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, scale = 3.15;
+  if (!mapCenter) return; const canvas = $('map-canvas'), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, scale = MAP_SCALE;
   const px = x => (x - mapCenter.x) * scale + w / 2, pz = z => (z - mapCenter.z) * scale + h / 2;
   ctx.fillStyle = '#dce6c9'; ctx.fillRect(0, 0, w, h);
   for (const c of world.chunks.values()) {
@@ -448,18 +468,29 @@ function drawMap() {
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowColor = '#6b775333'; ctx.shadowBlur = 8; ctx.fillStyle = '#cb8b50'; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
   ctx.save(); ctx.translate(x, y); ctx.rotate(-player.heading); ctx.fillStyle = '#fff9e9'; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-4, -3); ctx.lineTo(4, -3); ctx.closePath(); ctx.fill(); ctx.restore();
   const rn = visitedRoofs.size, gn = visitedGardens.size;
-  $('map-description').textContent = `${currentDistrict || districtName(0, 0, world.seed)} · ${rn} rooftop${rn === 1 ? '' : 's'}, ${gn} garden${gn === 1 ? '' : 's'}, ${friendsMade} friend${friendsMade === 1 ? '' : 's'}. Drag to look further.`;
+  $('map-seed').textContent = 'Seed ' + world.seedText; $('map-description').textContent = `${currentDistrict || districtName(0, 0, world.seed)} · ${rn} rooftop${rn === 1 ? '' : 's'}, ${gn} garden${gn === 1 ? '' : 's'}, ${friendsMade} friend${friendsMade === 1 ? '' : 's'}. Drag to look further.`;
 }
 
-// Quietly lower the render resolution on devices that cannot keep up, instead of slowing the cat.
+// Quietly lower the render resolution on devices that cannot keep up, instead of slowing the cat,
+// and step back up once frames have been smooth for a while.
+let qualityLevel = 0, smoothTime = 0, qualityToasted = false;
+const basePixelRatio = () => Math.min(devicePixelRatio, mobile ? 1.4 : 1.5);
+function applyQuality() {
+  const ratio = Math.max(.75, basePixelRatio() - .2 * Math.min(qualityLevel, 3));
+  if (Math.abs(renderer.getPixelRatio() - ratio) > .01) { renderer.setPixelRatio(ratio); renderer.setSize(innerWidth, innerHeight); }
+  const shadows = settings.shadows && qualityLevel < 4;
+  if (renderer.shadowMap.enabled !== shadows) { renderer.shadowMap.enabled = shadows; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
+}
 function adaptQuality(frameMs) {
   frameAvg += (frameMs - frameAvg) * .05;
-  if (frameAvg > 30) slowTime += frameMs / 1000; else slowTime = Math.max(0, slowTime - frameMs / 2000);
-  if (slowTime > 2.5) {
-    slowTime = 0;
-    const ratio = renderer.getPixelRatio();
-    if (ratio > .8) renderer.setPixelRatio(Math.max(.75, ratio - .2));
-    else if (renderer.shadowMap.enabled) { renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
+  if (frameAvg > 30) { slowTime += frameMs / 1000; smoothTime = 0; }
+  else if (frameAvg < 20) { slowTime = 0; smoothTime += frameMs / 1000; }
+  else slowTime = Math.max(0, slowTime - frameMs / 2000);
+  if (slowTime > 2.5 && qualityLevel < 4) {
+    slowTime = 0; smoothTime = 0; qualityLevel++; applyQuality();
+    if (!qualityToasted) { qualityToasted = true; toast('Softening the picture a little so the cat stays quick.', 'note', 3200); }
+  } else if (smoothTime > 8 && qualityLevel > 0) {
+    smoothTime = 0; slowTime = 0; qualityLevel--; applyQuality(); frameAvg = 16;
   }
 }
 
@@ -478,7 +509,7 @@ function loop(now) {
   updateCamera(dt); updateAtmosphere(dt); audio.update(dt); updateBubble();
   ground.position.x = player.pos.x; ground.position.z = player.pos.z;
   sun.position.set(player.pos.x - 35, 60, player.pos.z + 25); sun.target.position.set(player.pos.x, 0, player.pos.z);
-  hudTimer += dt; saveTimer += dt;
+  hudTimer += dt;
   if (hudTimer > .25) {
     hudTimer = 0; if (started && !modal) checkDiscoveries();
     const showHint = !!wallHint && !player.climbing && !resting && started && !modal && player.grounded;
@@ -489,7 +520,6 @@ function loop(now) {
     if (modal === 'map-modal' && !mapDrag) drawMap();
   }
   if (resting) { purrTimer += dt; if (purrTimer > 1.7) { purrTimer = 0; audio.purr(); } }
-  if (saveTimer > 5) { saveTimer = 0; save(); }
   renderer.render(scene, camera);
 }
 

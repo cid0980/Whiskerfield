@@ -59,3 +59,17 @@ export async function goImmersive() {
   const landscape = await lockLandscape();
   return { fullscreen, landscape };
 }
+
+// Screen Wake Lock: keep the phone awake while playing. Silent no-op where unsupported.
+let wakeLock = null, wantWake = false;
+export async function keepAwake(on) {
+  wantWake = on;
+  if (!on) { try { await wakeLock?.release(); } catch {} wakeLock = null; return; }
+  if (wakeLock || document.hidden || !navigator.wakeLock?.request) return;
+  const call = { name: 'wakelock', ok: false }; calls.push(call);
+  try {
+    wakeLock = await navigator.wakeLock.request('screen'); call.ok = true;
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && wantWake) keepAwake(true); });

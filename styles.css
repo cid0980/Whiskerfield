@@ -249,3 +249,5 @@ input[type=range]{width:150px;accent-color:var(--green);flex-shrink:0}
 }
 @media(max-width:620px){.help-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+.map-seed{margin:-4px 0 6px;font-size:12px;color:#aab3a2;letter-spacing:.02em}.map-seed small{font-size:12px;font-weight:600;color:var(--brass,#c9a15a)}.map-seed code{font-family:inherit;color:#dfe4d6}

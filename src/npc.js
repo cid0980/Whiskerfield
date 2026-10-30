@@ -52,7 +52,7 @@ class Person {
       const leg = new THREE.Mesh(variant.leg, people.material); leg.position.set(s * .09, legH, 0); leg.castShadow = true; this.body.add(leg); this.legs.push(leg);
       const arm = new THREE.Mesh(variant.arm, people.material); arm.position.set(s * .22, torsoH - .03, 0); arm.rotation.z = -s * .08; this.torso.add(arm); this.arms.push(arm);
     }
-    this.heart = new THREE.Sprite(people.heartMaterial); this.heart.scale.set(.26, .26, 1); this.heart.visible = false; this.group.add(this.heart);
+    this.heart = new THREE.Sprite(people.heartMaterial.clone()); this.heart.scale.set(.26, .26, 1); this.heart.visible = false; this.group.add(this.heart);
     this.solid = { shape: 'cylinder', x: 0, z: 0, r: .3, minX: 0, maxX: 0, minZ: 0, maxZ: 0, minY: 0, maxY: this.H, climbable: false, walkable: false, person: this };
     this.reset(0, 0);
   }

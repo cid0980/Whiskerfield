@@ -117,6 +117,15 @@ MIT licensed. See `LICENSE`.
 - Phones: fullscreen landscape on start with orientation lock where supported, a compact non-overlapping HUD, a portrait fallback, and the install button hides once the app is installed or launched from the home screen.
 - Consistent scale between the cat, people, cars, and buildings; the world streams endlessly in every direction.
 
+## Version 1.2.1 fixes
+
+- Each town keeps its own journey: opening `?seed=` for a different town starts you fresh there (settings kept), and returning to a seed restores where you left off.
+- Map drag now tracks your finger exactly; the map shows the world seed so you can bookmark a neighbourhood.
+- Adaptive quality recovers after 8 s of smooth frames instead of staying degraded, and says so with a toast.
+- Each neighbour has their own heart sprite (no flicker when two greet you at once).
+- Saves are change-driven rather than rewritten every 5 s while idle.
+- Sensitivity slider shows a live percentage; the WebGL error screen shows its cat icon; the screen stays awake while playing (Screen Wake Lock, where supported).
+
 ## GitHub Pages
 
 The included workflow at `.github/workflows/deploy.yml` builds the game and deploys the static site to GitHub Pages on every push to `main`.

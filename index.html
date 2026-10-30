@@ -92,7 +92,7 @@
 
     <div class="rotate-screen" id="rotate" hidden><svg class="icon"><use href="#i-rotate"/></svg><h2>Turn your phone sideways.</h2><p>Whiskerfield is lovelier in landscape. Rotate your device, or go fullscreen and we’ll try to turn it for you.</p><div><button class="primary-button" id="rotate-fullscreen">Fullscreen landscape</button><button class="text-button" id="rotate-continue">Continue in portrait</button></div></div>
     <div class="loading-screen" id="loading"><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>A little world is waking up.</h2><p>Putting the sunshine in its place…</p><div class="loading-track"><span></span></div></div>
-    <div class="error-screen" id="error-screen" hidden><svg class="icon"><use href="#i-cat"/></svg><h2>A little technical catnap.</h2><p id="error-message">This game needs WebGL. Try an up-to-date Chrome, Edge, Firefox, or Safari browser with hardware acceleration enabled.</p><button class="primary-button" onclick="location.reload()">Try again</button></div>
+    <div class="error-screen" id="error-screen" hidden><span class="loading-cat"><svg class="icon"><use href="#i-cat"/></svg></span><h2>A little technical catnap.</h2><p id="error-message">This game needs WebGL. Try an up-to-date Chrome, Edge, Firefox, or Safari browser with hardware acceleration enabled.</p><button class="primary-button" onclick="location.reload()">Try again</button></div>
   </main>
 
   <div class="modal-backdrop" id="modal-backdrop" hidden>
@@ -116,7 +116,7 @@
       <h2 id="settings-title">Your kind of quiet.</h2><p>The world can wait a moment.</p>
       <div class="setting-row"><div><strong>Sounds of the neighborhood</strong><small>Soft tones, birds, and a little breeze</small></div><button class="toggle on" id="audio-toggle" role="switch" aria-checked="true" aria-label="Neighborhood sounds"><span></span></button></div>
       <div class="setting-row"><div><label for="volume-slider">A comfortable volume</label><small id="volume-label">40%</small></div><input type="range" id="volume-slider" min="0" max="100" value="40" aria-label="Sound volume"></div>
-      <div class="setting-row"><div><label for="sensitivity-slider">Camera sensitivity</label><small>Just the right amount of look-around</small></div><input type="range" id="sensitivity-slider" min="20" max="150" value="70" aria-label="Camera sensitivity"></div>
+      <div class="setting-row"><div><label for="sensitivity-slider">Camera sensitivity</label><small id="sensitivity-label">70%</small></div><input type="range" id="sensitivity-slider" min="20" max="150" value="70" aria-label="Camera sensitivity"></div>
       <div class="setting-row"><div><strong>Fullscreen landscape on play</strong><small>On phones, go fullscreen and turn sideways when you start</small></div><button class="toggle on" id="immersive-toggle" role="switch" aria-checked="true" aria-label="Fullscreen landscape on play"><span></span></button></div>
       <div class="setting-row"><div><strong>Soft shadows</strong><small>Turn off for a lighter stroll on older devices</small></div><button class="toggle on" id="shadow-toggle" role="switch" aria-checked="true" aria-label="Soft shadows"><span></span></button></div>
       <div class="setting-row"><div><strong>Gentler motion</strong><small>Less camera sway and fewer drifting leaves</small></div><button class="toggle" id="motion-toggle" role="switch" aria-checked="false" aria-label="Gentler motion"><span></span></button></div>
@@ -129,7 +129,7 @@
     <section class="modal map-modal" id="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close map"><svg class="icon"><use href="#i-close"/></svg></button>
       <div class="modal-eyebrow"><svg class="icon"><use href="#i-map"/></svg> A SENSE OF SOMEWHERE</div>
-      <h2 id="map-title">Your little corner.</h2><p id="map-description">Every turn has something new on the other side.</p>
+      <h2 id="map-title">Your little corner.</h2><p class="map-seed"><small id="map-seed">Seed</small> <span class="map-seed-hint">· add <code>?seed=…</code> to the address to come back here</span></p><p id="map-description">Every turn has something new on the other side.</p>
       <div class="map-frame"><canvas id="map-canvas" width="960" height="650" aria-label="Map of the nearby procedurally generated neighborhood"></canvas><span class="map-north">N<span>↑</span></span><button class="map-recenter icon-button" id="map-recenter" title="Center on your cat" aria-label="Center map on your cat"><svg class="icon"><use href="#i-compass"/></svg></button></div>
       <div class="map-legend"><span><i class="legend-cat"></i>You, right here</span><span><i class="legend-roof"></i>Rooftop visited</span><span><i class="legend-park"></i>A quiet garden</span><span><i class="legend-person"></i>A neighbour</span></div>
       <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>The town grows as you wander. There’s always another street.</span></div>

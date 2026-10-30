@@ -431,3 +431,33 @@ test('ponds, fountains, birds, and a camera that stays above the scenery', async
   expect(cam.inFountain).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('everything that is drawn is solid: bushes, planters, railings and other scenery stop the cat', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, w = g.world, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    const auto = w.colliders.filter(s => s.auto);
+    const out = { total: w.colliders.length, auto: auto.length, shapes: {}, runs: [] };
+    for (const s of auto) out.shapes[s.shape] = (out.shapes[s.shape] || 0) + 1;
+    // Low scenery on open ground, approached from the west: the cat must end up outside it (or on top, never inside).
+    const targets = auto.filter(s => s.minY < .3 && s.maxY > .5 && s.maxX - s.minX < 2 && !w.inWater((s.minX + s.maxX) / 2, (s.minZ + s.maxZ) / 2)
+      && Math.abs(w.groundHeight(s.minX - 2, (s.minZ + s.maxZ) / 2)) < .2).slice(0, 6);
+    for (const s of targets) {
+      const cz = (s.minZ + s.maxZ) / 2;
+      g.teleport(s.minX - 2, .1, cz); step(30); g.setCamera(Math.atan2(-1, 0)); g.hold.y = -1; step(150); g.hold.y = 0;
+      const p = g.player.pos, insideXZ = p.x > s.minX + .02 && p.x < s.maxX - .02 && p.z > s.minZ + .02 && p.z < s.maxZ - .02;
+      out.runs.push({ kind: s.kind, shape: s.shape, x: +p.x.toFixed(2), y: +p.y.toFixed(2), minX: +s.minX.toFixed(2), maxY: +s.maxY.toFixed(2), insideBody: insideXZ && p.y < s.maxY - .1, moved: p.x > s.minX - 2.5 });
+    }
+    // Physics stays cheap even with every primitive registered.
+    g.teleport(0, .1, 8); step(30); g.hold.y = -1; const t0 = performance.now(); step(300); g.hold.y = 0; out.msPerStep = (performance.now() - t0) / 300;
+    return out;
+  });
+  expect(r.auto).toBeGreaterThan(500);
+  expect(r.runs.length).toBeGreaterThanOrEqual(3);
+  for (const run of r.runs) expect(run.insideBody, JSON.stringify(run)).toBe(false);
+  expect(r.msPerStep).toBeLessThan(2);
+  expect(errors).toEqual([]);
+});

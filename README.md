@@ -138,6 +138,10 @@ MIT licensed. See `LICENSE`.
 
 - Paws on top of the paving: pavements (13 cm), park paths, footpaths, roads and the square now have real ground heights, so the cat and the neighbours no longer stand ankle-deep in the kerb. Stepping on or off a kerb is a smooth step, never a fall. The pond sits slightly below the lawn.
 
+## Version 1.2.5 fix
+
+- Global collision: everything that is drawn is now solid. Every primitive placed in the world (bushes, planters, window boxes, railings, balcony posts, conifers, pond stones, garden ornaments…) automatically gets a collider, so the cat can no longer walk into anything. Only things lower than a cat's step (paving, cobbles), string-thin things (bunting, chains) and roof shells (which have their own sloped colliders) are left out. Low shrubs block rather than climb; a jump still clears them.
+
 ## Version 1.2.4 fix
 
 - A proper catnap pose: belly on the ground, front paws stretched forward, hind legs tucked beside the body, tail lying flat and curling round — instead of the splayed sprawl.

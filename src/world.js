@@ -36,8 +36,9 @@ const potGeo = new THREE.CylinderGeometry(1, .72, 1, 9);
 const torusGeo = new THREE.TorusGeometry(1, .12, 5, 16);
 
 export class Batch {
-  constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.count = 0; }
+  constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.count = 0; this.items = []; }
   add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0) {
+    this.items.push({ geometry, x, y, z, sx, sy, sz, rx, ry, rz });
     tempPosition.set(x, y, z); tempScale.set(sx, sy, sz);
     tempQuaternion.setFromEuler(new THREE.Euler(rx, ry, rz));
     tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
@@ -145,6 +146,56 @@ export class World {
     c.colliders.push(s); return s;
   }
 
+  // Global rule: everything that is drawn is solid. Every primitive placed in a chunk gets a
+  // collider unless it is lower than the cat's step height (paving, cobbles, lawns), string-thin
+  // (bunting, chains), a roof shell (those have their own sloped colliders) or already inside an
+  // explicit collider. Hand-placed colliders stay in charge of climbing/perching behaviour.
+  autoColliders(c, items) {
+    const explicit = c.colliders.filter(s => s.shape !== 'roof');
+    const step = .27, euler = new THREE.Euler(), q = new THREE.Quaternion(), v = new THREE.Vector3();
+    for (const it of items) {
+      const { geometry: g, x, y, z, sx, sy, sz, rx, ry, rz } = it;
+      const sphere = g === sphereGeo || g === softSphereGeo;
+      const round = g === cylinderGeo || g === taperedGeo || g === potGeo || g === coneGeo;
+      if (!sphere && !round && g !== boxGeo && g !== torusGeo) continue; // roof shells etc.
+      const hx = sphere || round || g === torusGeo ? sx * (g === torusGeo ? 1.12 : 1) : sx / 2;
+      const hy = sphere ? sy : g === torusGeo ? sy * .12 : sy / 2;
+      const hz = sphere || round || g === torusGeo ? sz * (g === torusGeo ? 1.12 : 1) : sz / 2;
+      const upright = Math.abs(rx) < .05 && Math.abs(rz) < .05;
+      if (Math.max(hx, hz) * 2 < .05) continue; // strings, wires
+      if (sphere && Math.max(sx, sz) < .25) continue; // flowers, leaf tufts
+      if (!upright && round && sx < .15) continue; // thin rafters, branches
+      let minX, maxX, minY, maxY, minZ, maxZ;
+      if (upright && Math.abs(ry) < .02) { minX = x - hx; maxX = x + hx; minY = y - hy; maxY = y + hy; minZ = z - hz; maxZ = z + hz; }
+      else {
+        q.setFromEuler(euler.set(rx, ry, rz));
+        minX = minY = minZ = Infinity; maxX = maxY = maxZ = -Infinity;
+        for (let i = 0; i < 8; i++) {
+          v.set(i & 1 ? hx : -hx, i & 2 ? hy : -hy, i & 4 ? hz : -hz).applyQuaternion(q);
+          minX = Math.min(minX, x + v.x); maxX = Math.max(maxX, x + v.x); minY = Math.min(minY, y + v.y); maxY = Math.max(maxY, y + v.y); minZ = Math.min(minZ, z + v.z); maxZ = Math.max(maxZ, z + v.z);
+        }
+      }
+      if (maxY < step) continue; // low enough to walk over
+      if (maxX - minX > 20 || maxZ - minZ > 20) continue; // ground slabs
+      let covered = false;
+      for (const s of explicit) {
+        const pad = s.auto ? .02 : .3;
+        if (minX >= s.minX - pad && maxX <= s.maxX + pad && minY >= s.minY - pad && maxY <= s.maxY + pad && minZ >= s.minZ - pad && maxZ <= s.maxZ + pad) { covered = true; break; }
+      }
+      if (covered) continue;
+      let made;
+      // Pieces touching a tree become part of that tree (so climbing follows the crown, not an invisible wall).
+      const tree = explicit.find(s => s.tree && minX < s.maxX && maxX > s.minX && minY < s.maxY && maxY > s.minY && minZ < s.maxZ && maxZ > s.minZ)?.tree;
+      const tag = tree ? { kind: 'tree', tree, auto: true } : { kind: 'auto', auto: true };
+      if (g === coneGeo && upright) made = this.ellipsoidSolid(c, x, y - hy + sy * .25, z, sx, sy * .75, sz, { ...tag, climbable: !!tree });
+      else if (sphere && upright) made = this.ellipsoidSolid(c, x, y, z, sx, sy, sz, { ...tag, climbable: !!tree || y + sy > 1.1 });
+      else if (round && upright) made = this.cylinderSolid(c, x, y - hy, z, Math.max(sx, sz), hy * 2, { ...tag, climbable: Math.max(sx, sz) > .3 });
+      else c.colliders.push(made = { shape: 'box', minX, maxX, minY, maxY, minZ, maxZ, climbable: maxY - minY > .4, ...tag });
+      if (tree && made.shape === 'ellipsoid') tree.canopies.push(made);
+      explicit.push(made);
+    }
+  }
+
   createChunk(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
     const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null };
@@ -192,6 +243,7 @@ export class World {
     } else if (rng() > .65) {
       this.bunting(c, ox - 12, oz, ox + 12, oz, 6.5);
     }
+    this.autoColliders(c, c.batch.items);
     const mesh = new THREE.Mesh(c.batch.geometry(), this.material);
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = `neighborhood-${key}`;
     c.mesh = mesh; c.batch = null; this.chunks.set(key, c); this.scene.add(mesh);

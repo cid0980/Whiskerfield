@@ -42,6 +42,7 @@ Your world seed, cat position, discoveries, and settings are saved locally on th
 | Look around | Drag the world | Drag the world |
 | Zoom | Scroll | Pinch |
 | Map | M or map button | Map button |
+| Hats | H or hat button | Hat button |
 | Catnap | N or “Stay a while” | Moon button |
 | Gamepad | Left stick move, right stick look, A jump, B/RB climb, triggers run | Same mapping for Bluetooth controllers |
 | Pause / settings | Escape or settings button | Settings button |
@@ -58,6 +59,7 @@ On phones the game asks for fullscreen landscape when you start; a portrait layo
 - Parks with ponds, footbridges, benches, trees, flowers, and street lanterns.
 - Rooftop and garden discoveries, a live neighborhood map, drifting leaves, butterflies, and synthesized ambient sound.
 - Landmark lots, one per district: a covered market with stallholders and a bandstand, a sawtooth-roofed works with a turning flywheel and a smoking chimney, tall towers with outside stairs, a climbing playground with a trampoline, a warehouse yard, and a café, a corner shop and a house you can actually walk into (tables, counters, shelves, beds, pendant lamps).
+- Shinies to collect, things to knock over, and hats to earn.
 - Townsfolk with faces, hair, glasses, beards, hats and work clothes: children, grandparents, a baker, a mechanic, a vendor, a waiter, an office worker, a builder — each tied to a place and a job, not just wandering.
 
 The starting square is composed for a gentle first view, but its houses are still seed-varied. Beyond it, the town continues as you walk.
@@ -135,6 +137,12 @@ MIT licensed. See `LICENSE`.
 - The fountain's colliders follow its real shape (basin rim, column, top dish) — no more hovering above it.
 - Cats don't walk into ponds: the water's edge stops them; a deliberate jump in means a slow wade back out.
 - Little garden birds (budgie yellow, sky blue, green, white) perch on lamps, benches, sills, branches and chimneys, and flutter off with a chirp when the cat comes close.
+
+## Version 1.3.1 — shinies, knock-overs, hats
+
+- Shinies (`src/fun.js`): bottle caps, coins, marbles, keys, buttons, rings, foil stars and tiny bells glint on rooftops, tower tops, playground platforms, garden corners and the odd pavement. Walk over one to pocket it. The star in the HUD counts them; they are saved with the journey.
+- Knock-overs: cones, bins, buckets, bottles, cans, flowerpots, crates and jugs stand along the pavements. Brush past at a trot and they tumble, bounce, and come to rest on their side — then you can kick them along the street. Each material has its own clatter, and anyone standing nearby has something to say about it.
+- Hats: press H (or the hat button) for the wardrobe. Nine hats — leaf, party cone, beret, bucket hat, straw hat, chef's hat, flower crown, top hat, crown — each unlocked by the number of shinies found. Nothing is spent. The hat sits on the cat's head and is remembered.
 
 ## Version 1.3.0 — districts and places
 

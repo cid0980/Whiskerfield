@@ -4,6 +4,7 @@ import { Cat } from './cat.js';
 import { NeighborhoodAudio } from './audio.js';
 import { CAT, PhysicsWorld, createPlayer, stepPlayer } from './physics.js';
 import { People } from './npc.js';
+import { Fun, HATS, buildHat } from './fun.js';
 import { Birds } from './birds.js';
 import * as platform from './platform.js';
 
@@ -34,6 +35,9 @@ const visitedRoofs = new Set(Array.isArray(saved?.roofs) ? saved.roofs.filter(v 
 const visitedGardens = new Set(Array.isArray(saved?.gardens) ? saved.gardens.filter(v => typeof v === 'string').slice(-10000) : []);
 const visitedPlaces = new Set(Array.isArray(saved?.places) ? saved.places.filter(v => typeof v === 'string').slice(-10000) : []);
 let friendsMade = Number.isFinite(saved?.friends) ? saved.friends : 0;
+const savedShinies = Array.isArray(saved?.shinies) ? saved.shinies.filter(v => typeof v === 'string').slice(-20000) : [];
+let savedKnocks = Number.isFinite(saved?.knocks) ? saved.knocks : 0, hatId = typeof saved?.hat === 'string' && HATS.some(h => h.id === saved.hat) ? saved.hat : 'none';
+let fun = null;
 const audio = new NeighborhoodAudio(); audio.enabled = settings.audio; audio.volume = settings.volume;
 let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [], birds;
 let started = false, resting = false, modal = null, previousFocus = null, ready = false, storageWarning = false;
@@ -58,7 +62,7 @@ const markDirty = () => { saveDirty = true; };
 function save() {
   if (!world) return;
   saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, settings, started })); }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: hatId, settings, started })); }
   catch { if (!storageWarning) { storageWarning = true; toast('This browser can’t save your journey. Try leaving private browsing.', 'note', 5000); } }
 }
 // One quiet line at the top of the screen; never a panel over the world.
@@ -67,7 +71,7 @@ function toast(text, kind = 'sun', duration = 3200) {
   $('toast-text').textContent = text; el.dataset.kind = kind; el.classList.add('show'); el.classList.toggle('action', kind === 'update');
   toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
-function updateCounts() { $('roof-count').textContent = visitedRoofs.size; $('garden-count').textContent = visitedGardens.size; $('friend-count').textContent = friendsMade; $('place-count').textContent = visitedPlaces.size; }
+function updateCounts() { $('roof-count').textContent = visitedRoofs.size; $('garden-count').textContent = visitedGardens.size; $('friend-count').textContent = friendsMade; $('place-count').textContent = visitedPlaces.size; $('shiny-count').textContent = fun ? fun.found : 0; }
 function setIcon(button, id) { button.querySelector('use')?.setAttribute('href', id); }
 function syncSettings() {
   for (const [id, key] of [['audio-toggle', 'audio'], ['shadow-toggle', 'shadows'], ['motion-toggle', 'reducedMotion'], ['immersive-toggle', 'immersive']]) {
@@ -92,6 +96,7 @@ function openModal(id) {
   if (id === 'map-modal') { mapCenter = { x: player.pos.x, z: player.pos.z }; drawMap(); }
   if (id === 'settings-modal') { $('seed-label').textContent = 'Seed: ' + world.seedText; $('new-world-confirm').hidden = true; syncSettings(); syncInstall(); }
   if (id === 'install-modal') syncInstall();
+  if (id === 'hats-modal') { syncHats(); $('hat-button').classList.remove('new'); }
   requestAnimationFrame(() => $(id).querySelector('button')?.focus({ preventScroll: true }));
 }
 function closeModal() {
@@ -135,7 +140,7 @@ function init() {
   const groundTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128); for (let i = 0; i < 2400; i++) { x.fillStyle = `rgba(60,75,45,${Math.random() * .1})`; x.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(180, 180); return t; })();
   ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: '#93a86f', roughness: 1, map: groundTex })); ground.rotation.x = -Math.PI / 2; ground.position.y = -.45; ground.receiveShadow = true; scene.add(ground);
   createWorld(urlSeed || saved?.seed || defaultSeed());
-  cat = new Cat(scene, CAT.scale); cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
+  cat = new Cat(scene, CAT.scale); cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading; wearHat(hatId, true);
   createAtmosphere(); createUI(); syncSettings(); updateCounts();
   cameraTarget.copy(player.pos); updateCamera(1, true);
   $('seed-label').textContent = 'Seed: ' + world.seedText;
@@ -144,8 +149,8 @@ function init() {
   requestAnimationFrame(() => { requestAnimationFrame(() => { $('loading').classList.add('done'); setTimeout(() => $('loading').hidden = true, 700); }); });
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
-    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); }, discover: checkDiscoveries, platformCalls: platform.calls,
-    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
+    player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); }, get fun() { return fun; }, wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
+    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: hatId, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
     teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
     getSettings: () => ({ ...settings })
@@ -161,6 +166,40 @@ function createWorld(seed) {
   birds = new Birds(scene, world, mobile ? 8 : 14);
   birds.onStartle = () => { birds.startles++; if (Math.random() < .5) audio.tweet(); };
   birds.spawnAll(player.pos);
+  fun = new Fun(scene, world, physics, { collected: savedShinies, knocks: savedKnocks }); fun.sync();
+  fun.onShiny = shiny => {
+    const n = fun.found; updateCounts(); audio.shiny(); burst(shiny.x, shiny.y, shiny.z); markDirty();
+    const unlocked = HATS.find(h => h.need === n && h.id !== 'none');
+    toast(unlocked ? `${shiny.kind.line} That makes ${n} — the ${unlocked.name.toLowerCase()} is yours. Press H.` : n === 1 ? `${shiny.kind.line} A cat could start a collection.` : shiny.kind.line, 'sun', unlocked ? 4600 : 2600);
+    if (unlocked) $('hat-button').classList.add('new');
+    if (n % 5 === 0 || unlocked) save();
+  };
+  fun.onKnock = (prop, sound, soft) => {
+    audio.clatter(sound, soft); if (soft) return; markDirty();
+    if (fun.knocks === 1) toast('Oops. It was in the way.', 'leaf', 2600);
+    else if (fun.knocks === 10) toast('Ten things knocked over. The street has noticed.', 'leaf', 3000);
+  };
+  if (cat) wearHat(hatId, true);
+}
+function wearHat(id, silent = false) {
+  const hat = HATS.find(h => h.id === id) || HATS[0];
+  if (fun && fun.found < hat.need) { if (!silent) toast(`Find ${hat.need - fun.found} more ${hat.need - fun.found === 1 ? 'shiny' : 'shinies'} for the ${hat.name.toLowerCase()}.`, 'note', 2600); return false; }
+  hatId = hat.id; cat.setHat(hat.id, buildHat(hat.id)); markDirty(); if (!silent) { save(); syncHats(); }
+  return true;
+}
+function syncHats() {
+  const list = $('hat-list'); if (!list) return; list.textContent = '';
+  const found = fun ? fun.found : 0; $('hat-found').textContent = found;
+  for (const h of HATS) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'hat-card'; b.dataset.hat = h.id;
+    const locked = found < h.need, wearing = hatId === h.id;
+    b.classList.toggle('locked', locked); b.classList.toggle('wearing', wearing); b.setAttribute('aria-pressed', wearing ? 'true' : 'false');
+    b.innerHTML = `<strong></strong><small></small><em></em>`;
+    b.querySelector('strong').textContent = h.name; b.querySelector('small').textContent = h.blurb;
+    b.querySelector('em').textContent = wearing ? 'Wearing' : locked ? `${h.need} shinies` : h.need ? 'Found' : '';
+    b.addEventListener('click', () => { if (wearHat(h.id)) syncHats(); });
+    list.appendChild(b);
+  }
 }
 
 function createAtmosphere() {
@@ -184,6 +223,7 @@ function createUI() {
   $('settings-help').addEventListener('click', () => openModal('help-modal'));
   $('settings-button').addEventListener('click', () => openModal('settings-modal'));
   $('map-button').addEventListener('click', () => openModal('map-modal'));
+  $('hat-button').addEventListener('click', () => openModal('hats-modal'));
   $('brand').addEventListener('click', e => { e.preventDefault(); openModal('settings-modal'); });
   $('rest-button').addEventListener('click', toggleRest);
   $('fullscreen-button').addEventListener('click', async () => { if (platform.isFullscreen()) await platform.exitFullscreen(); else { await platform.enterFullscreen(); if (mobile) await platform.lockLandscape(); } syncOrientation(); });
@@ -226,8 +266,9 @@ function createUI() {
       return;
     }
     if (!started) return;
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'ShiftLeft', 'ShiftRight', 'KeyM', 'KeyN', 'KeyF'].includes(e.code)) e.preventDefault();
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'ShiftLeft', 'ShiftRight', 'KeyM', 'KeyN', 'KeyF', 'KeyH'].includes(e.code)) e.preventDefault();
     if (e.code === 'KeyM' && !e.repeat) { openModal('map-modal'); return; }
+    if (e.code === 'KeyH' && !e.repeat) { openModal('hats-modal'); return; }
     if (e.code === 'KeyN' && !e.repeat) { toggleRest(); return; }
     if (e.code === 'KeyF' && !e.repeat) { $('fullscreen-button').click(); return; }
     if (e.code === 'Space' && !e.repeat && !keys.has('Space')) jumpQueued = true;
@@ -279,8 +320,8 @@ function createUI() {
 function markInstalled() { installed = true; installPrompt = null; platform.rememberInstalled(); syncInstall(); }
 
 function newWorld() {
-  stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, started });
-  people.dispose(); birds.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0;
+  stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected], knocks: fun.knocks, hat: hatId, started });
+  people.dispose(); birds.dispose(); for (const [, t] of fun.tracked) scene.remove(t.group); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0; savedShinies.length = 0; savedKnocks = 0; hatId = 'none';
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed()); updateCounts(); $('seed-label').textContent = 'Seed: ' + world.seedText; closeModal(); save();
@@ -545,19 +586,20 @@ function loop(now) {
   const frameMs = now - (lastTime || now - 16), dt = Math.min(.12, Math.max(.001, frameMs / 1000)); lastTime = now; time += dt;
   if (started) { adaptQuality(frameMs); playTime += dt; }
   pollGamepad(dt);
-  world.update(player.pos, 1); world.animate(time);
+  if (world.update(player.pos, 1)) fun.sync(); world.animate(time);
   if (started && !modal) simulate(dt); else { player.speed = 0; player.turnRate = 0; player.accel = 0; wallHint = null; }
   cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
   const groundY = physics.support(player.pos.x, player.pos.z, player.pos.y + .05).y;
   cat.update(dt, time, { speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, resting, vy: player.vy, turnRate: player.turnRate, accel: player.accel, landImpact: player.landImpact, runBlend: player.runBlend }, groundY, settings.reducedMotion);
   people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed);
+  if (started && !modal) fun.update(dt, player, people);
   if (!started && !settings.reducedMotion) cameraYawTarget += dt * .03;
   updateCamera(dt); updateAtmosphere(dt); audio.update(dt); updateBubble();
   ground.position.x = player.pos.x; ground.position.z = player.pos.z;
   sun.position.set(player.pos.x - 35, 60, player.pos.z + 25); sun.target.position.set(player.pos.x, 0, player.pos.z);
   hudTimer += dt;
   if (hudTimer > .25) {
-    hudTimer = 0; if (started && !modal) checkDiscoveries();
+    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync();
     const showHint = !!wallHint && !player.climbing && !resting && started && !modal && player.grounded;
     $('context-hint').classList.toggle('visible', showHint && !mobile);
     $('touch-climb').classList.toggle('ready', showHint);

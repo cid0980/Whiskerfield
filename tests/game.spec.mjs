@@ -507,3 +507,32 @@ test('places: a café you can walk into, a trampoline that bounces, a market wit
   expect(r.works.extras).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
+
+test('fun: shinies can be picked up, things can be knocked over, and hats unlock', async ({ page }) => {
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    g.start();
+    const sh = g.fun.listShinies(), pr = g.fun.listProps(), out = { shinies: sh.length, props: pr.length, kinds: new Set(sh.map(s => s.kind)).size };
+    const s0 = sh.sort((a, b) => Math.hypot(a.x - 1, a.z - 7) - Math.hypot(b.x - 1, b.z - 7))[0];
+    g.teleport(s0.x, s0.y + .2, s0.z); step(30); out.collected = g.getState().shinies; out.hudCount = document.getElementById('shiny-count').textContent;
+    out.lockedFirst = g.wearHat('crown'); out.leaf = g.wearHat('leaf'); out.hat = g.getState().hat; out.hatMeshes = g.cat.hatMount.children.length;
+    const pr0 = pr.filter(q => q.state === 'up').sort((a, b) => Math.hypot(a.x - 1, a.z - 7) - Math.hypot(b.x - 1, b.z - 7))[0];
+    g.teleport(pr0.x - 2.5, pr0.y + .2, pr0.z); step(25); g.setCamera(Math.atan2(-1, 0)); g.hold.y = -1; g.hold.sprint = true; step(60); g.hold.y = 0; g.hold.sprint = false; step(150);
+    const after = g.fun.listProps().filter(q => q.kind === pr0.kind).sort((a, b) => Math.hypot(a.x - pr0.x, a.z - pr0.z) - Math.hypot(b.x - pr0.x, b.z - pr0.z))[0];
+    out.prop = { before: pr0.state, after: after.state, moved: Math.hypot(after.x - pr0.x, after.z - pr0.z), knocks: g.getState().knocks };
+    g.save(); const saved = JSON.parse(localStorage.getItem('whiskerfield.journey.v1')); out.saved = { shinies: saved.shinies.length, hat: saved.hat, knocks: saved.knocks };
+    return out;
+  });
+  expect(r.shinies).toBeGreaterThan(30); expect(r.kinds).toBeGreaterThanOrEqual(5); expect(r.props).toBeGreaterThan(40);
+  expect(r.collected).toBe(1); expect(r.hudCount).toBe('1');
+  expect(r.lockedFirst).toBe(false); expect(r.leaf).toBe(true); expect(r.hat).toBe('leaf'); expect(r.hatMeshes).toBe(1);
+  expect(r.prop.before).toBe('up'); expect(r.prop.after).toBe('down'); expect(r.prop.moved).toBeGreaterThan(.3); expect(r.prop.knocks).toBeGreaterThanOrEqual(1);
+  expect(r.saved).toEqual({ shinies: 1, hat: 'leaf', knocks: r.prop.knocks });
+  // Hats modal opens with H and lists every hat.
+  await page.keyboard.press('KeyH');
+  await expect(page.locator('#hats-modal')).toBeVisible();
+  expect(await page.locator('.hat-card').count()).toBe(10);
+  await expect(page.locator('.hat-card.wearing strong')).toHaveText('Leaf');
+});

@@ -62,6 +62,7 @@ export class Cat {
       inner.rotation.y = Math.PI / 4; inner.position.set(0, .1, .055); inner.scale.z = .25; ear.add(inner);
       if (s === 1) this.twitchEar = ear; else this.otherEar = ear;
     }
+    this.hatMount = new THREE.Group(); this.hatMount.position.set(0, .24, -.03); this.hatMount.rotation.x = -.12; this.head.add(this.hatMount); this.hatId = 'none';
     mesh(this.head, 'nose', 0, -.075, .345, .05, .035, .03);
     const mouth = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, -.1, .34), new THREE.Vector3(0, -.14, .33),
@@ -127,6 +128,11 @@ export class Cat {
     g.addColorStop(0, 'rgba(35,45,30,.65)'); g.addColorStop(.4, 'rgba(35,45,30,.3)'); g.addColorStop(1, 'rgba(35,45,30,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(canvas);
   }
+  setHat(id, group) {
+    while (this.hatMount.children.length) this.hatMount.remove(this.hatMount.children[0]);
+    if (group) this.hatMount.add(group); this.hatId = group ? id : 'none';
+  }
+
   update(dt, time, state, groundY, reducedMotion = false) {
     const { speed = 0, grounded = true, climbing = false, resting = false, vy = 0, turnRate = 0, accel = 0, landImpact = 0, runBlend = 0 } = state;
     const moving = speed > .15 && !resting;

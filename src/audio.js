@@ -44,6 +44,13 @@ export class NeighborhoodAudio {
   greet(){if(!this.context)return;const t=this.context.currentTime;this.tone(660,t,.16,.03,'sine',880);this.tone(880,t+.14,.22,.028,'sine',990);}
   tweet(){if(!this.context)return;const t=this.context.currentTime;this.tone(2400,t,.07,.012,'sine',3100);this.tone(2900,t+.09,.06,.01,'sine',2500);}
   chirp(){if(this.context)this.tone(1500,this.context.currentTime,.09,.02,'sine',2100);}
+  shiny(){if(!this.context)return;const t=this.context.currentTime;this.tone(1318.5,t,.18,.035,'sine',1760);this.tone(1760,t+.09,.3,.03,'sine',2093);this.tone(2637,t+.18,.4,.018,'triangle');}
+  clatter(kind='metal',soft=false){if(!this.context)return;const t=this.context.currentTime,v=soft?.5:1;
+    if(kind==='metal'){this.tone(820,t,.14,.04*v,'square',260);this.tone(1900,t+.02,.08,.02*v,'triangle',900);this.tone(640,t+.12,.12,.02*v,'square',200);}
+    else if(kind==='glass'){this.tone(2400,t,.1,.03*v,'sine',1500);this.tone(3100,t+.05,.14,.02*v,'triangle',2000);}
+    else if(kind==='clay'){this.tone(480,t,.1,.035*v,'triangle',140);this.tone(900,t+.03,.06,.015*v,'square',400);}
+    else if(kind==='wood'){this.tone(260,t,.09,.04*v,'triangle',110);this.tone(420,t+.06,.07,.02*v,'triangle',200);}
+    else{this.tone(330,t,.1,.03*v,'triangle',120);}}
   purr(){if(this.context)this.tone(58,this.context.currentTime,.65,.025,'triangle',52);}
   suspend(){if(this.context?.state==='running')this.context.suspend().catch(()=>{});}
   resume(){if(this.started&&this.context?.state==='suspended')this.context.resume().catch(()=>{});}

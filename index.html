@@ -41,6 +41,8 @@
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/></symbol>
     <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4m16 0h-5V4m0 16v-5h5M4 15h5v5"/></symbol>
     <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4m0 0h12l-3 4 3 4H5"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6L3.3 9.3l6.1-.7L12 3Z"/></symbol>
+    <symbol id="i-hat" viewBox="0 0 24 24"><path d="M3 18h18M6 18V8a6 6 0 0 1 12 0v10M6 12h12"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10Z"/></symbol>
     <symbol id="i-rotate" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M12 2v2m0 18v-2M8 12h.01M16 12h.01"/></symbol>
     <symbol id="i-run" viewBox="0 0 24 24"><path d="M13 5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0ZM4 20l4-7 3 2v5m-1-9 3-3 3 3 3-1M7 13l-3-1"/></symbol>
@@ -56,8 +58,9 @@
       <div class="location-card play-hud" id="location-card"><svg class="icon"><use href="#i-leaf"/></svg><span id="district-name">Clover Quarter</span></div>
       <div class="top-actions">
         <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Getting cozy…</span></span>
-        <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span></div>
+        <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends · shinies"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span><span><svg class="icon"><use href="#i-star"/></svg><b id="shiny-count">0</b></span></div>
         <button class="icon-button" id="sound-button" aria-label="Turn sound off" title="Sound"><svg class="icon"><use href="#i-sound"/></svg></button>
+        <button class="icon-button" id="hat-button" aria-label="Open hats (H)" title="Hats · H"><svg class="icon"><use href="#i-hat"/></svg></button>
         <button class="icon-button" id="map-button" aria-label="Open neighborhood map (M)" title="Map · M"><svg class="icon"><use href="#i-map"/></svg></button>
         <button class="icon-button" id="fullscreen-button" aria-label="Fullscreen" title="Fullscreen · F"><svg class="icon"><use href="#i-expand"/></svg></button>
         <button class="icon-button" id="settings-button" aria-label="Open settings (Escape)" title="Settings · Esc"><svg class="icon"><use href="#i-settings"/></svg></button>
@@ -78,7 +81,7 @@
     <div class="context-hint hud play-hud" id="context-hint"><kbd>E</kbd><span>climb</span></div>
 
     <div class="bottom-bar hud play-hud">
-      <div class="keyboard-controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span><span><kbd>space</kbd> jump</span><span><kbd>shift</kbd> run</span><span><kbd>E</kbd> climb</span><span><kbd>M</kbd> map</span><span class="look-hint">drag to look · scroll to zoom</span></div>
+      <div class="keyboard-controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span><span><kbd>space</kbd> jump</span><span><kbd>shift</kbd> run</span><span><kbd>E</kbd> climb</span><span><kbd>M</kbd> map</span><span><kbd>H</kbd> hats</span><span class="look-hint">drag to look · scroll to zoom</span></div>
       <button class="rest-button" id="rest-button" title="Take a little breather · N" aria-label="Rest" aria-pressed="false"><svg class="icon"><use href="#i-moon"/></svg></button>
     </div>
 
@@ -124,7 +127,16 @@
       <div class="setting-row world-seed"><div><strong>Your world</strong><small id="seed-label">Seed: clover-108</small></div><button class="secondary-button" id="new-world-button">New neighborhood</button></div>
       <div class="new-world-confirm" id="new-world-confirm" hidden><p>A new town means a fresh discovery journal. Your current world will be replaced.</p><div><button class="secondary-button" id="cancel-new-world">Keep this world</button><button class="primary-button" id="confirm-new-world">A fresh start</button></div></div>
       <button class="primary-button full-width" data-close>Back to the breeze <svg class="icon"><use href="#i-arrow"/></svg></button>
-      <div class="settings-footer"><button class="text-button" id="settings-help">How to play</button><button class="text-button" id="install-link">How to install</button><span>WHISKERFIELD · 1.2</span></div>
+      <div class="settings-footer"><button class="text-button" id="settings-help">How to play</button><button class="text-button" id="install-link">How to install</button><span>WHISKERFIELD · 1.3</span></div>
+    </section>
+
+    <section class="modal hats-modal" id="hats-modal" role="dialog" aria-modal="true" aria-labelledby="hats-title" hidden>
+      <button class="modal-close icon-button" data-close aria-label="Close hats"><svg class="icon"><use href="#i-close"/></svg></button>
+      <div class="modal-eyebrow"><svg class="icon"><use href="#i-hat"/></svg> THE WARDROBE</div>
+      <h2 id="hats-title">Something for the head.</h2>
+      <p>Shinies turn up on rooftops, ledges and under things — bottle caps, marbles, a key or two. Each one you find unlocks a little more of the wardrobe. You have found <b id="hat-found">0</b> so far.</p>
+      <div class="hat-list" id="hat-list"></div>
+      <button class="primary-button full-width" data-close>Back outside <svg class="icon"><use href="#i-arrow"/></svg></button>
     </section>
 
     <section class="modal map-modal" id="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-title" hidden>

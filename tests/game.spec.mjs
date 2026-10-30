@@ -161,10 +161,10 @@ test('the cat is quick, analog input stays useful, and scenery is solid and clim
 
 test('neighbours wander freely, chat, and make a fuss of the cat', async ({ page }) => {
   const errors = await enter(page);
-  const before = await page.evaluate(() => window.__whiskerfield.people.list.map(p => [p.x, p.z, p.axis, p.dir]));
+  const before = await page.evaluate(() => window.__whiskerfield.people.wanderers.map(p => [p.x, p.z, p.axis, p.dir]));
   expect(before.length).toBeGreaterThan(5);
   await page.waitForTimeout(2500);
-  const after = await page.evaluate(() => window.__whiskerfield.people.list.map(p => [p.x, p.z, p.axis, p.dir, p.state]));
+  const after = await page.evaluate(() => window.__whiskerfield.people.wanderers.map(p => [p.x, p.z, p.axis, p.dir, p.state]));
   const moved = after.filter((a, i) => Math.hypot(a[0] - before[i][0], a[1] - before[i][1]) > 0.1).length;
   expect(moved).toBeGreaterThan(after.length / 2);
   // Not a parade: the crowd heads in more than one direction.
@@ -348,7 +348,7 @@ test('housekeeping: seeds, map drag, adaptive quality, hearts, saves, labels, wa
   // Each neighbour owns their heart material; saves only happen when something changed.
   const misc = await page.evaluate(async () => {
     const g = window.__whiskerfield;
-    const mats = new Set(g.people.list.map(p => p.heart.material));
+    const mats = new Set(g.people.list.map(p => p.heart.material)), headcount = g.people.list.length;
     let writes = 0; const orig = localStorage.setItem.bind(localStorage);
     localStorage.setItem = (k, v) => { writes++; orig(k, v); };
     g.hold.x = g.hold.y = 0; g.save();
@@ -358,7 +358,7 @@ test('housekeeping: seeds, map drag, adaptive quality, hearts, saves, labels, wa
     g.hold.y = -1; for (let i = 0; i < 60 * 7; i++) g.step(1 / 60); g.hold.y = 0;
     const moving = writes - after - idle;
     localStorage.setItem = orig;
-    return { people: g.people.list.length, mats: mats.size, idle, moving, wake: g.platformCalls.some(c => c.name === 'wakelock') || !navigator.wakeLock };
+    return { people: headcount, mats: mats.size, idle, moving, wake: g.platformCalls.some(c => c.name === 'wakelock') || !navigator.wakeLock };
   });
   expect(misc.mats).toBe(misc.people);
   expect(misc.idle).toBe(0);
@@ -413,7 +413,7 @@ test('ponds, fountains, birds, and a camera that stays above the scenery', async
     g.setCamera(0); g.teleport(31, .5, 10); step(20); let air = 0, lands = 0, prev = true; g.hold.x = -1;
     for (let i = 0; i < 150; i++) { g.step(1 / 60); if (!g.player.grounded) air++; if (g.player.grounded && !prev) lands++; prev = g.player.grounded; }
     g.hold.x = 0; out.kerb = { air, lands, x: g.player.pos.x };
-    step(60); out.people = g.people.list.filter(p => Math.abs(p.y - g.world.groundHeight(p.x, p.z)) < .02).length / g.people.list.length;
+    step(60); out.people = g.people.wanderers.filter(p => Math.abs(p.y - g.world.groundHeight(p.x, p.z)) < .02).length / g.people.wanderers.length;
     return out;
   });
   expect(ground.pavement).toBeCloseTo(.13, 2);
@@ -459,5 +459,51 @@ test('everything that is drawn is solid: bushes, planters, railings and other sc
   expect(r.runs.length).toBeGreaterThanOrEqual(3);
   for (const run of r.runs) expect(run.insideBody, JSON.stringify(run)).toBe(false);
   expect(r.msPerStep).toBeLessThan(2);
+  expect(errors).toEqual([]);
+});
+
+test('places: a café you can walk into, a trampoline that bounces, a market with stallholders, towers and works', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/?test=1&seed=moss-424');
+  await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, w = g.world, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    g.start(); const out = {};
+    out.kinds = [...new Set(w.landmarks.map(l => l.kind))].sort();
+    // Café: through the front door, onto the floor, and the discovery fires.
+    const cafe = w.landmarks.find(l => l.kind === 'cafe' && Math.abs(l.x) < 40);
+    g.teleport(cafe.x, .3, cafe.inside.maxZ + 2.5); step(20); g.setCamera(Math.atan2(0, 1)); g.hold.y = -1; step(140); g.hold.y = 0; g.discover();
+    out.cafe = { z: g.player.pos.z, maxZ: cafe.inside.maxZ, y: g.player.pos.y, places: g.getState().places, support: g.getState().support };
+    // Market: stallholders appear at their stalls with the right job, and face their work.
+    const market = w.landmarks.find(l => l.kind === 'market' && Math.abs(l.x) < 40);
+    g.teleport(market.x, .3, market.z + 6); step(90);
+    out.market = { vendors: g.people.list.filter(p => p.job && p.role.startsWith('vendor')).length, shoppers: g.people.list.filter(p => p.job && p.role === 'shopper').length, sitting: g.people.list.filter(p => p.sitting).length, total: g.people.list.length };
+    // Trampoline: fall onto it and get thrown back up higher than a normal step.
+    const tramp = w.colliders.find(s => s.kind === 'trampoline') || (() => { const pg = w.landmarks.find(l => l.kind === 'playground'); g.teleport(pg.x, .3, pg.z); step(5); return w.colliders.find(s => s.kind === 'trampoline'); })();
+    g.teleport(tramp.x, tramp.maxY + 3, tramp.z); let peak = 0, bounced = false, landed = false;
+    for (let i = 0; i < 240; i++) { g.step(1 / 60); const y = g.player.pos.y; if (!bounced && g.player.vy > 1 && i > 10) bounced = true; if (bounced) peak = Math.max(peak, y); if (bounced && g.player.grounded) { landed = true; break; } }
+    out.tramp = { bounced, peak: peak - tramp.maxY, landed, support: g.getState().support };
+    // Tower: the roof counts as a place once you are standing on it.
+    const tower = w.landmarks.find(l => l.kind === 'tower'); g.teleport(tower.x, tower.y + .5, tower.z); step(30); g.discover();
+    out.tower = { y: g.player.pos.y, top: tower.y, grounded: g.player.grounded, places: g.getState().places };
+    // Works: sawtooth roof steps are walkable, and the smoke/cog extras are animated meshes.
+    const works = w.landmarks.find(l => l.kind === 'works'); const shed = w.buildings.find(b => b.id === works.id);
+    g.teleport(shed.x, shed.h + .3, shed.z - shed.d / 2 + .6); step(20); g.setCamera(Math.atan2(0, -1)); g.hold.y = -1; const y0 = g.player.pos.y; let top = y0; for (let i = 0; i < 120; i++) { g.step(1 / 60); top = Math.max(top, g.player.pos.y); } g.hold.y = 0;
+    out.works = { climbed: top - y0, grounded: g.player.grounded, extras: [...w.chunks.values()].reduce((a, c) => a + c.ticks.length, 0) };
+    return out;
+  });
+  expect(r.kinds).toEqual(expect.arrayContaining(['cafe', 'market', 'tower', 'works', 'home', 'shop', 'warehouse']));
+  expect(r.cafe.z).toBeLessThan(r.cafe.maxZ - .5);
+  expect(r.cafe.y).toBeCloseTo(.36, 1);
+  expect(r.cafe.places).toBeGreaterThanOrEqual(1);
+  expect(r.market.vendors).toBeGreaterThanOrEqual(6);
+  expect(r.market.shoppers).toBeGreaterThanOrEqual(2);
+  expect(r.tramp.bounced).toBe(true);
+  expect(r.tramp.peak).toBeGreaterThan(1.2);
+  expect(r.tower.grounded).toBe(true);
+  expect(r.tower.places).toBeGreaterThanOrEqual(2);
+  expect(r.works.climbed).toBeGreaterThan(.6);
+  expect(r.works.extras).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

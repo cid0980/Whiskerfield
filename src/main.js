@@ -10,7 +10,7 @@ import * as platform from './platform.js';
 const $ = id => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
 const SAVE_KEY = 'whiskerfield.journey.v1';
-const VERSION = '1.2';
+const VERSION = '1.3';
 const mobile = platform.coarse;
 const BASE_SPEED = 7, SPRINT_SPEED = 12.5, STEP = 1 / 90, MAP_SCALE = 3.15;
 const params = new URLSearchParams(location.search);
@@ -32,6 +32,7 @@ const validPoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Num
 const player = createPlayer(validPoint(saved?.position) ? { ...saved.position, heading: Number.isFinite(saved?.heading) ? saved.heading : .55 } : null);
 const visitedRoofs = new Set(Array.isArray(saved?.roofs) ? saved.roofs.filter(v => typeof v === 'string').slice(-10000) : []);
 const visitedGardens = new Set(Array.isArray(saved?.gardens) ? saved.gardens.filter(v => typeof v === 'string').slice(-10000) : []);
+const visitedPlaces = new Set(Array.isArray(saved?.places) ? saved.places.filter(v => typeof v === 'string').slice(-10000) : []);
 let friendsMade = Number.isFinite(saved?.friends) ? saved.friends : 0;
 const audio = new NeighborhoodAudio(); audio.enabled = settings.audio; audio.volume = settings.volume;
 let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [], birds;
@@ -48,7 +49,7 @@ const leaves = [], butterflies = [], sparks = [];
 let installPrompt = null, offlineReady = false, installed = platform.launchedStandalone() || platform.wasInstalled(), updateReady = false;
 let lastPinch = 0, swRegistration = null;
 const input = { x: 0, y: 0, yaw: 0, sprint: false, baseSpeed: BASE_SPEED, sprintSpeed: SPRINT_SPEED, jump: false, jumpHeld: false, climb: false, autoClimb: true, resting: false };
-const events = { jump: () => audio.jump(), land: () => audio.land(), mantle: () => audio.chirp() };
+const events = { jump: () => audio.jump(), land: () => audio.land(), mantle: () => audio.chirp(), bounce: () => { audio.chirp(); burst(); } };
 // Test-only virtual controller (merged into the real input when ?test=1 is used).
 const hold = { x: 0, y: 0, climb: false, sprint: false, jump: false, jumpHeld: false };
 
@@ -57,7 +58,7 @@ const markDirty = () => { saveDirty = true; };
 function save() {
   if (!world) return;
   saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), friends: friendsMade, settings, started })); }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, settings, started })); }
   catch { if (!storageWarning) { storageWarning = true; toast('This browser can’t save your journey. Try leaving private browsing.', 'note', 5000); } }
 }
 // One quiet line at the top of the screen; never a panel over the world.
@@ -66,7 +67,7 @@ function toast(text, kind = 'sun', duration = 3200) {
   $('toast-text').textContent = text; el.dataset.kind = kind; el.classList.add('show'); el.classList.toggle('action', kind === 'update');
   toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
-function updateCounts() { $('roof-count').textContent = visitedRoofs.size; $('garden-count').textContent = visitedGardens.size; $('friend-count').textContent = friendsMade; }
+function updateCounts() { $('roof-count').textContent = visitedRoofs.size; $('garden-count').textContent = visitedGardens.size; $('friend-count').textContent = friendsMade; $('place-count').textContent = visitedPlaces.size; }
 function setIcon(button, id) { button.querySelector('use')?.setAttribute('href', id); }
 function syncSettings() {
   for (const [id, key] of [['audio-toggle', 'audio'], ['shadow-toggle', 'shadows'], ['motion-toggle', 'reducedMotion'], ['immersive-toggle', 'immersive']]) {
@@ -144,7 +145,7 @@ function init() {
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
     player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); }, discover: checkDiscoveries, platformCalls: platform.calls,
-    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, friends: friendsMade, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
+    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
     teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
     getSettings: () => ({ ...settings })
@@ -278,8 +279,8 @@ function createUI() {
 function markInstalled() { installed = true; installPrompt = null; platform.rememberInstalled(); syncInstall(); }
 
 function newWorld() {
-  stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), friends: friendsMade, started });
-  people.dispose(); birds.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); friendsMade = 0;
+  stashJourney({ version: 1, seed: world.seedText, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, started });
+  people.dispose(); birds.dispose(); world.dispose(); visitedRoofs.clear(); visitedGardens.clear(); visitedPlaces.clear(); friendsMade = 0;
   player.pos.set(1.1, 0, 7.1); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = .55; player.landImpact = 0; player.runBlend = 0;
   cameraYaw = cameraYawTarget = .56; cameraPitch = cameraPitchTarget = .34; cameraDistance = cameraDistanceTarget = mobile ? 5 : 5.4; resting = false; saved = null;
   createWorld(defaultSeed()); updateCounts(); $('seed-label').textContent = 'Seed: ' + world.seedText; closeModal(); save();
@@ -347,6 +348,7 @@ function rayBox(origin, dir, s, pad = .2) {
   return tmin > 0.02 ? tmin : Infinity;
 }
 function updateCamera(dt, instant = false) {
+  if (hold.camera) { camera.position.set(...hold.camera.pos); camera.lookAt(...hold.camera.at); return; }
   cameraYaw = THREE.MathUtils.damp(cameraYaw, cameraYawTarget, 12, dt);
   cameraPitch = THREE.MathUtils.damp(cameraPitch, cameraPitchTarget, 10, dt);
   cameraDistance = THREE.MathUtils.damp(cameraDistance, cameraDistanceTarget * (1 + player.runBlend * .14), 6, dt);
@@ -391,6 +393,16 @@ function burst(x = player.pos.x, y = player.pos.y + .4, z = player.pos.z) {
   for (let i = 0; i < 14; i++) sparks.push({ x, y, z, vx: (Math.random() - .5) * 2, vy: .8 + Math.random() * 1.8, vz: (Math.random() - .5) * 2, life: 1.4 });
   if (sparks.length > 80) sparks.splice(0, sparks.length - 80);
 }
+const PLACE_LINES = {
+  market: () => 'Market day. Mind the stallholders’ feet.',
+  works: () => 'The old works. Something in there is still turning.',
+  warehouse: () => 'The depot. Pallets make excellent stairs.',
+  tower: () => 'Top of the tower. The whole town, and the wind in your fur.',
+  playground: () => 'The parkour park. Poles, beams, a slide — and a trampoline.',
+  cafe: () => 'Inside the café. There’s a cat bed in the corner, obviously.',
+  shop: () => 'The little grocer. Please do not knock over the tins.',
+  home: () => 'Somebody’s living room. Act like you live here.'
+};
 function checkDiscoveries() {
   const p = player.pos;
   for (const b of world.buildings) {
@@ -406,6 +418,17 @@ function checkDiscoveries() {
     if (!visitedGardens.has(park.id) && p.y < 1.5 && (p.x - park.x) ** 2 + (p.z - park.z) ** 2 < 81) {
       visitedGardens.add(park.id); updateCounts(); audio.discovery(); burst(); toast('A quiet garden discovered.', 'leaf', 2600); save(); break;
     }
+  }
+  for (const place of world.landmarks) {
+    if (visitedPlaces.has(place.id)) continue;
+    let here;
+    if (place.inside) here = p.x > place.inside.minX && p.x < place.inside.maxX && p.z > place.inside.minZ && p.z < place.inside.maxZ && p.y < place.y + 1.5;
+    else if (place.kind === 'tower') here = player.grounded && p.y > place.y - .5 && Math.abs(p.x - place.x) < place.radius && Math.abs(p.z - place.z) < place.radius;
+    else here = (p.x - place.x) ** 2 + (p.z - place.z) ** 2 < place.radius ** 2 && p.y < 6;
+    if (!here) continue;
+    visitedPlaces.add(place.id); updateCounts(); burst(); audio.discovery();
+    const n = visitedPlaces.size;
+    toast(PLACE_LINES[place.kind]?.(place, n) || `You found ${place.name}.`, 'sun', 3200); save(); break;
   }
   const name = districtName(Math.floor((p.x + 36) / 72), Math.floor((p.z + 36) / 72), world.seed);
   if (name !== currentDistrict) {
@@ -479,12 +502,19 @@ function drawMap() {
     if (visited) { ctx.fillStyle = '#f4f4df'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✓', px(b.x), pz(b.z) + 5); }
     else { ctx.fillStyle = '#c5a15d'; ctx.beginPath(); ctx.arc(px(b.x), pz(b.z), 2.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  for (const p of people.list) { ctx.fillStyle = '#7c8fa6'; ctx.beginPath(); ctx.arc(px(p.x), pz(p.z), 3, 0, Math.PI * 2); ctx.fill(); }
+  const ICON = { market: '#d7a048', works: '#8a6a4c', warehouse: '#8a8072', tower: '#5f6b66', playground: '#d9544f', cafe: '#c88f6e', shop: '#6f9a4f', home: '#b48c9c' };
+  for (const l of world.landmarks) {
+    const seen = visitedPlaces.has(l.id); ctx.fillStyle = ICON[l.kind] || '#999'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px(l.x), pz(l.z), seen ? 7 : 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (seen) { ctx.fillStyle = '#fffaf0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✓', px(l.x), pz(l.z) + 3.5); }
+    if (Math.abs(l.x - mapCenter.x) < 110 && Math.abs(l.z - mapCenter.z) < 70) { ctx.fillStyle = '#5f6b5a'; ctx.font = '600 10px "DM Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(l.name.replace(/^the |^somebody’s /, ''), px(l.x), pz(l.z) + 18); }
+  }
+  for (const p of people.list) { ctx.fillStyle = p.job ? '#a37c5a' : '#7c8fa6'; ctx.beginPath(); ctx.arc(px(p.x), pz(p.z), 3, 0, Math.PI * 2); ctx.fill(); }
   const x = px(player.pos.x), y = pz(player.pos.z);
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowColor = '#6b775333'; ctx.shadowBlur = 8; ctx.fillStyle = '#cb8b50'; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
   ctx.save(); ctx.translate(x, y); ctx.rotate(-player.heading); ctx.fillStyle = '#fff9e9'; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-4, -3); ctx.lineTo(4, -3); ctx.closePath(); ctx.fill(); ctx.restore();
-  const rn = visitedRoofs.size, gn = visitedGardens.size;
-  $('map-seed').textContent = 'Seed ' + world.seedText; $('map-description').textContent = `${currentDistrict || districtName(0, 0, world.seed)} · ${rn} rooftop${rn === 1 ? '' : 's'}, ${gn} garden${gn === 1 ? '' : 's'}, ${friendsMade} friend${friendsMade === 1 ? '' : 's'}. Drag to look further.`;
+  const rn = visitedRoofs.size, gn = visitedGardens.size, pn = visitedPlaces.size;
+  $('map-seed').textContent = 'Seed ' + world.seedText; $('map-description').textContent = `${currentDistrict || districtName(0, 0, world.seed)} · ${rn} rooftop${rn === 1 ? '' : 's'}, ${gn} garden${gn === 1 ? '' : 's'}, ${pn} place${pn === 1 ? '' : 's'}, ${friendsMade} friend${friendsMade === 1 ? '' : 's'}. Drag to look further.`;
 }
 
 // Quietly lower the render resolution on devices that cannot keep up, instead of slowing the cat,
@@ -515,7 +545,7 @@ function loop(now) {
   const frameMs = now - (lastTime || now - 16), dt = Math.min(.12, Math.max(.001, frameMs / 1000)); lastTime = now; time += dt;
   if (started) { adaptQuality(frameMs); playTime += dt; }
   pollGamepad(dt);
-  world.update(player.pos, 1);
+  world.update(player.pos, 1); world.animate(time);
   if (started && !modal) simulate(dt); else { player.speed = 0; player.turnRate = 0; player.accel = 0; wallHint = null; }
   cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
   const groundY = physics.support(player.pos.x, player.pos.z, player.pos.y + .05).y;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse } from './places.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -34,6 +35,7 @@ const sphereGeo = new THREE.IcosahedronGeometry(1, 1);
 const softSphereGeo = new THREE.IcosahedronGeometry(1, 1);
 const potGeo = new THREE.CylinderGeometry(1, .72, 1, 9);
 const torusGeo = new THREE.TorusGeometry(1, .12, 5, 16);
+export const GEO = Object.freeze({ box: boxGeo, cylinder: cylinderGeo, tapered: taperedGeo, cone: coneGeo, sphere: sphereGeo, softSphere: softSphereGeo, pot: potGeo, torus: torusGeo });
 
 export class Batch {
   constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.count = 0; this.items = []; }
@@ -87,7 +89,7 @@ export function districtName(cx, cz, seed) { const h = hash(Math.floor(cx / 2), 
 export class World {
   constructor(scene, seedText) {
     this.scene = scene; this.seedText = seedText; this.seed = hashString(seedText);
-    this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.spatial = new Map();
+    this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.spatial = new Map();
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .98, metalness: 0, flatShading: true });
     this.center = ''; this.radius = 2; this.pending = [];
   }
@@ -114,8 +116,8 @@ export class World {
   }
 
   refreshColliders() {
-    this.colliders = []; this.buildings = []; this.parks = []; this.water = [];
-    for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); }
+    this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = [];
+    for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); this.jobs.push(...c.jobs); this.grounds.push(...c.grounds); this.landmarks.push(...c.landmarks); }
     // 8 m spatial hash so physics, NPCs, and the camera only touch nearby solids.
     const index = new Map();
     for (const s of this.colliders) {
@@ -128,7 +130,7 @@ export class World {
 
   removeChunk(key) {
     const c = this.chunks.get(key); if (!c) return;
-    this.scene.remove(c.mesh); c.mesh.geometry.dispose(); this.chunks.delete(key);
+    this.scene.remove(c.mesh); c.mesh.geometry.dispose(); if (c.group) this.scene.remove(c.group); this.chunks.delete(key);
   }
 
   dispose() { for (const key of this.chunks.keys()) this.removeChunk(key); this.material.dispose(); }
@@ -164,6 +166,7 @@ export class World {
       const upright = Math.abs(rx) < .05 && Math.abs(rz) < .05;
       if (Math.max(hx, hz) * 2 < .05) continue; // strings, wires
       if (sphere && Math.max(sx, sz) < .25) continue; // flowers, leaf tufts
+      if (g === coneGeo && sx < .6) continue; // finials, lamp caps, lampshades
       if (!upright && round && sx < .15) continue; // thin rafters, branches
       let minX, maxX, minY, maxY, minZ, maxZ;
       if (upright && Math.abs(ry) < .02) { minX = x - hx; maxX = x + hx; minY = y - hy; maxY = y + hy; minZ = z - hz; maxZ = z + hz; }
@@ -176,11 +179,12 @@ export class World {
         }
       }
       if (maxY < step) continue; // low enough to walk over
+      if (maxY - minY < .05) continue; // rugs, mats, posters, plates
       if (maxX - minX > 20 || maxZ - minZ > 20) continue; // ground slabs
       let covered = false;
       for (const s of explicit) {
         const pad = s.auto ? .02 : .3;
-        if (minX >= s.minX - pad && maxX <= s.maxX + pad && minY >= s.minY - pad && maxY <= s.maxY + pad && minZ >= s.minZ - pad && maxZ <= s.maxZ + pad) { covered = true; break; }
+        if (minX >= s.minX - pad && maxX <= s.maxX + pad && minY >= s.minY - pad && maxY <= s.maxY + Math.min(pad, .12) && minZ >= s.minZ - pad && maxZ <= s.maxZ + pad) { covered = true; break; }
       }
       if (covered) continue;
       let made;
@@ -198,7 +202,7 @@ export class World {
 
   createChunk(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
-    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null };
+    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [] };
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const grass = ['#93a86f', '#9aae75', '#8fa46a', '#a0b27b'][hash(cx, cz, this.seed, 4) % 4];
     c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
@@ -227,9 +231,16 @@ export class World {
       const lx = i % 2 ? 16.5 : -16.5, lz = i < 2 ? -16.5 : 16.5;
       const x = ox + lx, z = oz + lz;
       const r = random(hash(cx * 4 + i, cz, this.seed, 901));
-      const isPark = (cx === 0 && cz === 0 && i === 3) || (!(cx === 0 && cz === 0) && r() < .23);
-      if (isPark) this.makePark(c, x, z, r, i);
-      else this.makeBuilding(c, x, z, r, `${key}:${i}`, cx === 0 && cz === 0 ? i : -1);
+      const lot = this.lotKind(cx, cz, i, r), id = `${key}:${i}`;
+      if (lot === 'park') this.makePark(c, x, z, r, i);
+      else if (lot === 'market') makeMarket(this, c, x, z, r, id);
+      else if (lot === 'works') makeFactory(this, c, x, z, r, id);
+      else if (lot === 'depot') makeWarehouse(this, c, x, z, r, id);
+      else if (lot === 'tower') makeTower(this, c, x, z, r, id, 1);
+      else if (lot === 'spire') makeTower(this, c, x, z, r, id, 1.6);
+      else if (lot === 'play') makePlayground(this, c, x, z, r, id);
+      else if (lot === 'cafe' || lot === 'shop' || lot === 'home') makeInterior(this, c, x, z, r, id, lot);
+      else this.makeBuilding(c, x, z, r, id, cx === 0 && cz === 0 ? i : -1);
     }
     // Street trees, lanterns, and small places to pause.
     for (const s of [-1, 1]) {
@@ -244,10 +255,67 @@ export class World {
       this.bunting(c, ox - 12, oz, ox + 12, oz, 6.5);
     }
     this.autoColliders(c, c.batch.items);
+    this.buildExtras(c);
     const mesh = new THREE.Mesh(c.batch.geometry(), this.material);
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = `neighborhood-${key}`;
     c.mesh = mesh; c.batch = null; this.chunks.set(key, c); this.scene.add(mesh);
   }
+
+  // Every chunk has a character; the character decides what its four lots become.
+  theme(cx, cz) {
+    if (cx === 0 && cz === 0) return 'square';
+    const h = hash(cx, cz, this.seed, 77) % 100;
+    return h < 34 ? 'lanes' : h < 50 ? 'market' : h < 64 ? 'works' : h < 80 ? 'towers' : h < 90 ? 'play' : 'lanes';
+  }
+  lotKind(cx, cz, i, r) {
+    const t = this.theme(cx, cz), v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
+    if (t === 'square') return ['building', 'market', 'cafe', 'park'][i];
+    if (t === 'market') return ['market', 'cafe', 'shop', v < 50 ? 'park' : 'home'][i];
+    if (t === 'works') return ['works', 'depot', v < 40 ? 'park' : 'building', 'building'][i];
+    if (t === 'towers') return ['tower', 'spire', 'tower', v < 60 ? 'park' : 'building'][i];
+    if (t === 'play') return ['play', 'park', v < 50 ? 'home' : 'building', 'building'][i];
+    if (v < 20) return 'park';
+    if (v < 30) return 'home';
+    if (v < 34) return 'cafe';
+    return 'building';
+  }
+  // Animated set dressing lives in real meshes beside the merged chunk geometry.
+  buildExtras(c) {
+    if (!c.extras.length && !c.smoke.length) return;
+    const group = new THREE.Group(); group.name = `extras-${c.key}`; c.group = group; this.scene.add(group);
+    const mat = color => new THREE.MeshStandardMaterial({ color, roughness: .85, flatShading: true });
+    for (const e of c.extras) {
+      if (e.kind === 'rollers') {
+        const m = mat('#9aa4a0'), geo = new THREE.CylinderGeometry(.11, .11, .9, 8); geo.rotateZ(Math.PI / 2); geo.rotateY(Math.PI / 2);
+        const rollers = [];
+        for (let i = 0; i < e.count; i++) { const mesh = new THREE.Mesh(geo, m); mesh.position.set(e.x - (e.count - 1) / 2 * e.spacing + i * e.spacing, e.y, e.z); group.add(mesh); rollers.push(mesh); }
+        const box = new THREE.Mesh(new THREE.BoxGeometry(.7, .5, .6), mat('#c7a97b')); group.add(box);
+        c.ticks.push(t => { for (const r of rollers) r.rotation.x = t * 3; box.position.set(e.x - 3.2 + ((t * .9) % 6.4), e.y + .36, e.z); });
+      } else if (e.kind === 'cog') {
+        const g = new THREE.Group(); g.position.set(e.x, e.y, e.z);
+        g.add(new THREE.Mesh(new THREE.TorusGeometry(e.r, .14, 6, 14), mat('#5f6b66')));
+        for (let i = 0; i < 8; i++) { const tooth = new THREE.Mesh(new THREE.BoxGeometry(.3, .3, .2), mat('#5f6b66')); const a = i / 8 * Math.PI * 2; tooth.position.set(Math.cos(a) * (e.r + .15), Math.sin(a) * (e.r + .15), 0); tooth.rotation.z = a; g.add(tooth); }
+        for (let i = 0; i < 3; i++) { const spoke = new THREE.Mesh(new THREE.BoxGeometry(e.r * 2, .12, .1), mat('#5f6b66')); spoke.rotation.z = i / 3 * Math.PI; g.add(spoke); }
+        g.rotation.y = Math.PI / 2; group.add(g); c.ticks.push(t => { g.rotation.x = t * .6; });
+      } else if (e.kind === 'beacon') {
+        const m = new THREE.MeshStandardMaterial({ color: '#ff5a4a', emissive: '#ff3b2b', emissiveIntensity: 1.2 });
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(.22, 8, 6), m); mesh.position.set(e.x, e.y, e.z); group.add(mesh);
+        c.ticks.push(t => { const k = .6 + .4 * Math.sin(t * 3); mesh.scale.setScalar(k); m.emissiveIntensity = .4 + k; });
+      } else if (e.kind === 'swing') {
+        const g = new THREE.Group(); g.position.set(e.x, e.y, e.z);
+        const rope = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 1.2, 5), mat('#8d8470')); rope.position.y = -.6; g.add(rope);
+        const tyre = new THREE.Mesh(new THREE.TorusGeometry(.4, .12, 6, 14), mat('#2f3331')); tyre.position.y = -1.4; tyre.rotation.x = Math.PI / 2; g.add(tyre);
+        group.add(g); c.ticks.push(t => { g.rotation.z = Math.sin(t * 1.4) * .32; });
+      }
+    }
+    for (const s of c.smoke) {
+      const m = new THREE.MeshStandardMaterial({ color: '#dcd8d0', transparent: true, opacity: .5, roughness: 1, depthWrite: false });
+      const puffs = [];
+      for (let i = 0; i < 7; i++) { const p = new THREE.Mesh(GEO.softSphere, m); group.add(p); puffs.push(p); }
+      c.ticks.push(t => { puffs.forEach((p, i) => { const k = ((t * .18 + i / 7) % 1); p.position.set(s.x + Math.sin(i * 2.1 + t * .3) * (.3 + k * 1.5) + k * 1.8, s.y + k * 7.5, s.z + Math.cos(i * 1.7) * .3 + k * .8); p.scale.setScalar(.55 + k * 1.9); }); });
+    }
+  }
+  animate(t) { for (const c of this.chunks.values()) for (const tick of c.ticks) tick(t); }
 
   makeBuilding(c, x, z, r, id, special = -1) {
     const b = c.batch;
@@ -694,6 +762,7 @@ export class World {
   // Height of the walkable ground surface: pavements, roads, footpaths, park lawns and paths, the square.
   // Keeps paws on top of the paving instead of inside it.
   groundHeight(x,z){
+    for(const g of this.grounds) if(x>=g.minX&&x<=g.maxX&&z>=g.minZ&&z<=g.maxZ) return g.y;
     const lx=x-Math.round(x/CHUNK)*CHUNK, lz=z-Math.round(z/CHUNK)*CHUNK, ax=Math.abs(lx), az=Math.abs(lz);
     const pave=v=>Math.abs(v-28.45)<.525||Math.abs(v-35.45)<.525;
     if((pave(ax)&&az<=31.5)||(pave(az)&&ax<=31.5))return .13;

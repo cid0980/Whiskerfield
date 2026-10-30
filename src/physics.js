@@ -238,7 +238,10 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
     const nx = p.pos.x + p.vx * dt / substeps, nz = p.pos.z + p.vz * dt / substeps;
     let stepY = p.pos.y;
     if (p.grounded) {
-      const ahead = physics.support(nx, nz, old.y + CAT.step);
+      // Look at the leading edge of the body too, so a low step is climbed before the body bumps it.
+      const len = Math.hypot(p.vx, p.vz) || 1, ox = p.vx / len * CAT.radius, oz = p.vz / len * CAT.radius;
+      const a1 = physics.support(nx, nz, old.y + CAT.step), a2 = physics.support(nx + ox, nz + oz, old.y + CAT.step);
+      const ahead = a2.y > a1.y && a2.y <= old.y + CAT.step ? a2 : a1;
       if (ahead.y > p.pos.y && ahead.y <= old.y + CAT.step) stepY = ahead.y;
     }
     p.pos.set(nx, stepY, nz);
@@ -268,9 +271,19 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
     if (capped < nextY) { nextY = capped; p.vy = 0; }
   }
   const wasGrounded = p.grounded; p.grounded = false;
-  const ground = physics.support(p.pos.x, p.pos.z, beforeY + (wasGrounded ? CAT.step : .025));
+  let ground = physics.support(p.pos.x, p.pos.z, beforeY + (wasGrounded ? CAT.step : .025));
+  if (wasGrounded && Math.hypot(p.vx, p.vz) > .3) {
+    // Paws reach a little ahead of the body's centre: a stair tread or ledge under the front paws still counts.
+    const len = Math.hypot(p.vx, p.vz) || 1, lead = physics.support(p.pos.x + p.vx / len * CAT.radius, p.pos.z + p.vz / len * CAT.radius, beforeY + .01);
+    if (lead.y > ground.y && lead.y <= beforeY + .01) ground = lead;
+  }
   const stepDown = wasGrounded && p.vy <= 0 && p.vy > -1.2 && ground.y < beforeY && beforeY - ground.y <= CAT.step * .8;
   if ((p.vy <= 0 && nextY <= ground.y + .002 && beforeY >= ground.y - (wasGrounded ? CAT.step : .04)) || stepDown) {
+    if (ground.solid?.bouncy && p.vy < -2.5) {
+      // Trampolines: the harder the landing, the higher the bounce (holding jump adds a little more).
+      p.pos.y = ground.y + .01; p.vy = Math.min(ground.solid.bouncy, Math.max(7, -p.vy * .92 + (input.jumpHeld ? 1.5 : 0))); p.grounded = false; p.support = null; p.airTime = 0; p.jumpCut = true;
+      events.bounce?.(ground.solid); p.speed = Math.hypot(p.vx, p.vz); return { wall, climbed: false };
+    }
     p.pos.y = ground.y; p.vy = 0; p.grounded = true; p.support = ground.solid; p.jumpCut = false; p.airTime = 0;
     if (!wasGrounded) { p.landImpact = clamp(Math.abs(ground.y - nextY) * 2 + .25, .2, 1); events.land?.(ground.solid); }
   } else { p.pos.y = nextY; p.support = null; p.airTime += dt; }

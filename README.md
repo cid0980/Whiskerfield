@@ -57,6 +57,8 @@ On phones the game asks for fullscreen landscape when you start; a portrait layo
 - Gabled, hipped, flat, and stepped roofs; rooftop pergolas, planters, laundry, and water butts.
 - Parks with ponds, footbridges, benches, trees, flowers, and street lanterns.
 - Rooftop and garden discoveries, a live neighborhood map, drifting leaves, butterflies, and synthesized ambient sound.
+- Landmark lots, one per district: a covered market with stallholders and a bandstand, a sawtooth-roofed works with a turning flywheel and a smoking chimney, tall towers with outside stairs, a climbing playground with a trampoline, a warehouse yard, and a café, a corner shop and a house you can actually walk into (tables, counters, shelves, beds, pendant lamps).
+- Townsfolk with faces, hair, glasses, beards, hats and work clothes: children, grandparents, a baker, a mechanic, a vendor, a waiter, an office worker, a builder — each tied to a place and a job, not just wandering.
 
 The starting square is composed for a gentle first view, but its houses are still seed-varied. Beyond it, the town continues as you walk.
 
@@ -134,7 +136,14 @@ MIT licensed. See `LICENSE`.
 - Cats don't walk into ponds: the water's edge stops them; a deliberate jump in means a slow wade back out.
 - Little garden birds (budgie yellow, sky blue, green, white) perch on lamps, benches, sills, branches and chimneys, and flutter off with a chirp when the cat comes close.
 
-## Version 1.2.3 fix
+## Version 1.3.0 — districts and places
+
+- New places (`src/places.js`): each 5×5-chunk district gets a few landmark lots instead of another row of houses — market, works, towers, playground, warehouse, café, shop, home. The café, the shop and the home are open: step over the doorstep and the interior is furnished and solid.
+- A parkour playground: platforms, a climbing frame, a slide, balance beams and a trampoline that launches the cat (`bouncy` surfaces in the physics).
+- People rewritten (`src/npc.js`): proportioned bodies, skin and hair tones, eyes, eyebrows, mouths, glasses, beards, buns and ponytails, aprons, overalls, hard hats, briefcases, prams. Workers stand at their post (behind the stall, by the counter, on the factory floor) and turn to look at the cat when it comes close; wanderers still stroll.
+- Discovery of places: walking into a landmark shows a short note and counts under the flag in the HUD; the map marks every landmark with an icon and a tick once visited. Saved with the rest of the progress.
+- Movement: low steps and stair treads are climbed from the leading paws, not only once the body centre is over them; thin sheets (rugs, mats, posters) no longer block; small cone finials and lamp caps are no longer solid.
+
 
 - Paws on top of the paving: pavements (13 cm), park paths, footpaths, roads and the square now have real ground heights, so the cat and the neighbours no longer stand ankle-deep in the kerb. Stepping on or off a kerb is a smooth step, never a fall. The pond sits slightly below the lawn.
 

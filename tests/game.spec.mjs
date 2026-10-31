@@ -39,7 +39,7 @@ test('wander, jump, climb, discover, map, rest, and resume offline', async ({ pa
   const wall = await page.evaluate(() => {
     const g = window.__whiskerfield;
     const b = g.world.buildings.find(b => b.roofType < 2 && Math.hypot(b.x, b.z) < 80);
-    g.teleport(b.x, 0, b.z + b.d / 2 + 0.3); g.player.heading = Math.PI;
+    g.teleport(b.x, 0, b.z - b.d / 2 - 0.3); g.player.heading = 0; // the back wall: no front door, steps or porch in the way
     return { x: b.x, z: b.z, h: b.h, d: b.d };
   });
   await page.keyboard.down('e');
@@ -334,7 +334,7 @@ test('housekeeping: seeds, map drag, adaptive quality, hearts, saves, labels, wa
   // Adaptive quality degrades under load and recovers after smooth frames.
   const q = await page.evaluate(() => {
     const g = window.__whiskerfield, out = {};
-    out.start = g.getQuality();
+    for (let i = 0; i < 3000; i++) g.adapt(12); out.start = g.getQuality(); // settle at full quality first: the software renderer may already have been slow
     for (let i = 0; i < 400; i++) g.adapt(60); out.slow = g.getQuality();
     for (let i = 0; i < 3000; i++) g.adapt(12); out.recovered = g.getQuality();
     return out;
@@ -585,7 +585,9 @@ test('out of town: a station with a canopy to sit on, allotments with a greenhou
     out.station = { found: !!st, name: st?.name, people: g.people.list.filter(p => Math.hypot(p.x - st.x, p.z - st.z) < 20).length };
     const canopy = g.world.colliders.find(s => s.kind === 'roof' && s.shape === 'box' && Math.hypot((s.minX + s.maxX) / 2 - st.x, (s.minZ + s.maxZ) / 2 - st.z) < 12);
     g.teleport((canopy.minX + canopy.maxX) / 2, canopy.maxY + .3, (canopy.minZ + canopy.maxZ) / 2); step(40); out.station.onCanopy = g.player.pos.y;
-    g.teleport(-448, .3, -215); step(40); const al = g.world.landmarks.find(l => l.kind === 'allotments');
+    // Allotments: the nearest 'allot' block (its first lot is always the allotments) that is not at the seaside.
+    let best = null; for (let cx = -8; cx <= 8; cx++) for (let cz = -2; cz <= 8; cz++) if (g.world.theme(cx, cz) === 'allot' && (!best || Math.hypot(cx, cz) < Math.hypot(best[0], best[1]))) best = [cx, cz];
+    g.teleport(best[0] * 72 - 16.5, .3, best[1] * 72 - 16.5 + 13); step(40); const al = g.world.landmarks.find(l => l.kind === 'allotments');
     out.allot = { found: !!al, name: al?.name };
     g.teleport(al.x - 6.5, .3, al.z + 9); step(40); out.allot.insideGreenhouse = g.player.pos.y;
     g.teleport(al.x - 6.5, 3, al.z + 9); step(40); out.allot.onGreenhouseRoof = g.player.pos.y;
@@ -628,7 +630,7 @@ test('indoors and abroad: furnished houses, a works floor, a train you can ride,
     g.teleport(146.1, .3, 12); step(40); g.hold.y = -1; g.setCamera(0); step(60 * 6); g.hold.y = 0; step(20);
     out.boarded = { support: g.getState().support, modal: g.getState().modal, y: +g.player.pos.y.toFixed(2) };
     out.flightOk = g.board('sunmarch'); const phases = []; let last = null;
-    let seated = null; for (let i = 0; i < 60 * 90 && g.flight.active; i++) { g.step(1 / 60); if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); } if (g.flight.phase === 'cruise' && g.flight.t > 14 && !seated) seated = { visible: g.cat.root.visible, atSeat: g.player.pos.distanceTo(g.flight.seat) < .05, high: g.player.pos.y > 30, camInside: g.camera.position.distanceTo(g.flight.seat) < 4 }; }
+    let seated = null; for (let i = 0; i < 60 * 90 && g.flight.active; i++) { g.step(1 / 60); if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); } if (g.flight.phase === 'cruise' && g.flight.t > 14 && !seated) seated = { visible: g.cat.root.visible, atSeat: g.player.pos.distanceTo(g.flight.seat) < .05, high: g.player.pos.y > 30, camInside: g.flight.cam.pos.distanceTo(g.flight.seat) < 4 }; }
     out.phases = phases; out.country = g.country; out.seated = seated; out.landedNear = Math.hypot(g.player.pos.x - 144.1, g.player.pos.z + .05) < 1 && g.player.pos.y > 1.8; out.catVisible = g.cat.root.visible; out.doorOpen = [...g.planes.list.values()][0].doorOpen;
     out.seedLabel = document.getElementById('seed-label').textContent; out.airportsAbroad = g.world.airports.length; out.planesAbroad = g.planes.list.size;
     out.saved = JSON.parse(localStorage.getItem('whiskerfield.journey.v1')).country;

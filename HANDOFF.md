@@ -73,8 +73,9 @@ script (`Whiskerfield <whiskerfield@users.noreply.github.com>`). If pushing says
 re-add the origin: `git remote set-url origin https://github.com/cid0980/Whiskerfield.git`.
 
 Verify a deploy: poll `https://api.github.com/repos/cid0980/Whiskerfield/actions/runs?per_page=1` until the
-run for your `head_sha` is `completed/success`, then compare
-`md5sum assets/game.js` with `curl -sL "https://cid0980.github.io/Whiskerfield/assets/game.js?v=$RANDOM" | md5sum`.
+run for your `head_sha` (not the previous one — it can take ~30 s to appear) is `completed/success`, then
+`curl -sL "https://cid0980.github.io/Whiskerfield/version.json?v=$RANDOM"` should show the new version
+(the CDN can lag up to 10 min, `cache-control: max-age=600`).
 
 Release checklist per batch: fix → `npm run build` → targeted tests → README changelog + feature text →
 bump `package.json` version → delete scratch files → `scripts/push.sh "vX.Y.Z: …"` → verify Pages.
@@ -221,8 +222,12 @@ interiors overhaul".
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
-- Build before committing; Pages serves `assets/game.js` from the repo. Every build changes `sw.js` cache
-  id and `version.json` (build time), so every push is an "update".
+- GitHub Pages is built by CI (`.github/workflows/deploy.yml` runs `npm run build` and copies an **explicit
+  file list** into `_site`). Adding a new top-level file? Add it to the `cp` line there too, or it 404s on
+  the live site. Because CI rebuilds, the live `assets/game.js` md5 differs from your local one by the
+  build timestamp — compare `version.json` or the SW cache name instead. Still build locally before
+  committing so tests and the committed bundle match. Every build changes `sw.js` cache id and
+  `version.json`, so every push is an "update" for installed players.
 - `index.html` boots `assets/game.js`; the SW precaches it; `version.json` and `sw.js` bypass the cache.
 - Python patch scripts: always `assert anchor in text` before replacing; a `//` comment in a one-liner
   swallows the rest of the line (use `/* */`).

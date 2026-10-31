@@ -217,14 +217,19 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    gives each one a bounding-box collider, so a "ramp" is really a jagged invisible stair, and a tilted
    stringer becomes one huge invisible wall across the flight (the cat scrambles up it to 2.5 m and
    falls). Never build a walkable slope out of tilted boxes; use upright treads.
-8. **Planes clip buildings on take-off/landing. [pair D]** The runway is only one chunk; the climb path
-   starts at `len/2` and the descent from 60 m passes over the neighbouring blocks. Plan: keep airport
-   chunks' neighbours along the runway axis low (force `lanes`/`park` themes with no towers for
-   `cx±1`), start the climb later with a steeper initial pitch, and make the glide slope end exactly at
-   the runway threshold (check `Flight.update` `climb`/`descend` numbers against building heights ≤ 12 m).
-9. **Hard to move inside the plane. [pair D]** Seats are 1.1 m squares across the whole row; aisle .7 m;
-   seat solids overlap the aisle. Plan: shrink seat solids to the cushion footprint, make cushions
-   walkable (kind `seat`), leave the aisle clear, and put the camera in interior mode in the cabin.
+8. **[DONE in 1.7.7, pair D]** Planes clipping buildings. Two causes. (1) The climb was quadratic
+   (`y = .35 + 110k²`), so the plane spent its first block or two skimming rooftops at ten metres;
+   it is now `110 * k^1.4`, and the *blocks either side of every runway* are cleared of buildings —
+   `runwayLane(cx, cz)` in world.js makes `theme()` 'allot' and `lotKind()` park/allotments for
+   `cx ± 1, 2` of an airport chunk. (2) `lotKind` must return real lot kinds ('allotments'), not a
+   theme name ('allot') — the wrong word silently falls through to a house. Test checks every frame of
+   a full flight: no building within 3 m of the plane's path while airborne, plus the lane kinds.
+9. **[DONE in 1.7.7, pair D]** Moving about the plane. The seat solids were one slab per *pair* of
+   seats (`d: 1.1`, reaching to z ±.25) which pinched the aisle to half a metre. One collider per
+   cushion now (`d: .46` at z ±.55 / ±1.05) leaves a .64 m aisle, and cushions are `climbable: true`
+   so the cat can step up on a seat instead of bumping it. Measured: 11 m of cabin walked in two
+   seconds. **Pitfall:** when editing those one-line loops, keep the closing braces — a missing `}`
+   shifts every const out of scope and the whole page dies with "sz is not defined".
 10. **People: bodies/clothes don't fit, floating when seated, interactions broken. [pair E]**
     `npc.js` builds a person from boxes; shirt/trousers scale with `build`/`height` but the head/limbs don't
     follow, and the sitting pose offsets `y` by a constant instead of the bench top. Plan: derive all

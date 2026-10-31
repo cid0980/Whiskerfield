@@ -914,6 +914,54 @@ test('the cat swims out of the lake and walks onto the train at a door', async (
   expect(Math.abs(r.aisle.rode)).toBeGreaterThan(3);
 });
 
+test('the cabin is walkable, and the plane leaves and lands without going through a roof', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {};
+    g.teleport(0, 1, 0);
+    const air = g.world.airports[0];
+    g.teleport(air.stand.x, 1, air.stand.z); for (let i = 0; i < 60; i++) g.step(1 / 60);
+    const plane = g.planes.list.get(air.id);
+    // ---- down the aisle, back of the cabin to the cockpit door
+    const start = plane.toWorld(-4.6, 1.55, 0);
+    g.teleport(start.x, start.y + .2, start.z); for (let i = 0; i < 40; i++) g.step(1 / 60);
+    const p0 = g.player.pos.clone();
+    g.setCamera(-Math.PI / 2, -.1, 2.4); g.hold.y = -1;
+    for (let i = 0; i < 120; i++) g.step(1 / 60);
+    g.hold.y = 0; for (let i = 0; i < 30; i++) g.step(1 / 60);
+    out.aisle = { walked: +Math.hypot(g.player.pos.x - p0.x, g.player.pos.z - p0.z).toFixed(2), support: g.getState().support, y: +g.player.pos.y.toFixed(2) };
+    // ---- the flight, frame by frame: is any building in the plane's way?
+    out.flightOk = g.board('sunmarch');
+    const phases = []; let last = null, worst = 99, worstAt = null;
+    for (let i = 0; i < 60 * 90 && g.flight.active; i++) {
+      g.step(1 / 20);
+      if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); }
+      if (!g.flight.plane) break;
+      const p = g.flight.plane.group.position;
+      if (p.y < .6 || p.y > 60) continue;
+      for (const b of g.world.buildings) {
+        if (b.parent) continue;
+        if (p.x > b.x - b.w / 2 - 3 && p.x < b.x + b.w / 2 + 3 && p.z > b.z - b.d / 2 - 3 && p.z < b.z + b.d / 2 + 3) {
+          const clear = p.y - b.h; if (clear < worst) { worst = clear; worstAt = [Math.round(p.x), +p.y.toFixed(1), Math.round(p.z), Math.round(b.h), g.flight.phase]; }
+        }
+      }
+    }
+    out.phases = phases; out.worst = +worst.toFixed(1); out.worstAt = worstAt;
+    // ---- and the blocks either side of a runway carry nothing tall
+    out.lane = [0, 1, 2, 3].map(i => g.world.lotKind(5 * 6 + 1, 0, i));
+    return out;
+  });
+  expect(errors).toEqual([]);
+  // A metre-wide aisle, not a squeeze: the whole length of the cabin in two seconds.
+  expect(r.aisle.walked).toBeGreaterThan(4);
+  expect(r.aisle.support).toBe('floor');
+  // The whole trip, and never a roof in the way of it.
+  expect(r.flightOk).toBe(true);
+  expect(r.phases).toEqual(['board', 'taxi', 'roll', 'climb', 'cruise', 'descend', 'rollout', 'taxiIn', 'stand', null]);
+  expect(r.worst, JSON.stringify(r.worstAt)).toBeGreaterThan(0);
+  expect(r.lane).toEqual(['park', 'allotments', 'park', 'allotments']);
+});
+
 test('the minimap: a square of the town with the cat in it, pointing where it is going', async ({ page }) => {
   const errors = await enter(page);
   const r = await page.evaluate(async () => {

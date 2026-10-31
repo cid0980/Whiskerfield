@@ -49,7 +49,7 @@ function buildPlane(b, livery) {
   for (const [gx, gz] of gear) { b.box(gx, (floor - .5) / 2 + .3, gz, .16, floor - .9, .16, '#8a9893'); b.add(GEO.cylinder, gx, .45, gz, .45, .35, .45, dark, 0, 0, Math.PI / 2); b.add(GEO.cylinder, gx, .45, gz, .2, .37, .2, '#cfc8b4', 0, 0, Math.PI / 2); }
   // Cabin: rows of seats either side of the aisle, a galley at the back, cockpit door at the front.
   const seatSolids = [];
-  for (let row = 0; row < 7; row++) { const sx = len / 2 - 3.2 - row * 1.35; for (const s of [-1, 1]) for (const k of [.55, 1.05]) { if (row === 2 && s < 0 && k === .55) continue; /* the seat beside the cat's is left out, so you can see it */ const sz = s * k; b.box(sx, floor + .25, sz, .5, .12, .46, '#4f7f96'); b.box(sx - .25, floor + .55, sz, .1, .72, .46, '#4f7f96'); b.box(sx - .27, floor + .92, sz, .06, .16, .3, '#f3f1ea'); b.box(sx, floor + .1, sz, .4, .2, .36, '#2f3331'); } seatSolids.push(row === 2 ? { x: sx, y: floor + .17, z: -1.05, w: .5, h: .32, d: .5 } : { x: sx, y: floor + .17, z: -.8, w: .5, h: .32, d: 1.1 }, { x: sx, y: floor + .17, z: .8, w: .5, h: .32, d: 1.1 }); }
+  for (let row = 0; row < 7; row++) { const sx = len / 2 - 3.2 - row * 1.35; for (const s of [-1, 1]) for (const k of [.55, 1.05]) { if (row === 2 && s < 0 && k === .55) continue; /* the seat beside the cat's is left out, so you can see it */ const sz = s * k; b.box(sx, floor + .25, sz, .5, .12, .46, '#4f7f96'); b.box(sx - .25, floor + .55, sz, .1, .72, .46, '#4f7f96'); b.box(sx - .27, floor + .92, sz, .06, .16, .3, '#f3f1ea'); b.box(sx, floor + .1, sz, .4, .2, .36, '#2f3331'); /* One collider per cushion, not one slab per pair of seats: a 1.1 m deep seat solid reached into the aisle and pinched it to half a metre, which is why walking about in the cabin was so stiff. */ seatSolids.push({ x: sx, y: floor + .17, z: sz, w: .5, h: .32, d: .46 }); } }
   // Passengers: most seats taken, the cat's window seat (row 2, left) kept free.
   const coats = ['#c9524a', '#4f7f96', '#6f9a4f', '#d9a53a', '#8f5f4e', '#6d5d8a'];
   let pi = 0; for (let row = 0; row < 7; row++) { const sx = len / 2 - 3.2 - row * 1.35; for (const s of [-1, 1]) for (const k of [.55, 1.05]) { const sz = s * k; pi++; if (s < 0 && row >= 1 && row <= 3) continue; if (pi % 3 === 0) continue; // the rows round the cat's window seat stay clear so the view does
@@ -71,7 +71,7 @@ function buildPlane(b, livery) {
     { x: -len / 2 + 1.2, y: floor + .5, z: -.9, w: 1.7, h: 1.08, d: 1.2, kind: 'counter', climbable: false },
     { x: -len / 2 + 1.2, y: floor + 1, z: 1, w: .12, h: 2, d: 1, kind: 'wall', climbable: false },
     { x: -2.1, y: cy - .35, z: 6.25, w: 4.6, h: .3, d: 9.5, kind: 'wing', climbable: false }, { x: -2.1, y: cy - .35, z: -6.25, w: 4.6, h: .3, d: 9.5, kind: 'wing', climbable: false }, // wings, reachable from the top of the steps
-    ...seatSolids.map(s => ({ ...s, kind: 'seat', climbable: false }))
+    ...seatSolids.map(s => ({ ...s, kind: 'seat', climbable: true })) // cushions are a step up, not a wall
   ];
   return solids;
 }
@@ -158,7 +158,9 @@ export class Flight {
       cams = windowCam();
       if (this.t > 5) { this.phase = 'climb'; this.t = 0; this.climbX = x; }
     } else if (this.phase === 'climb') { // up and away: first from the window, then a chase shot
-      const k = clamp01(this.t / 9), x = this.climbX + 36 * this.t + 2 * this.t * this.t, y = .35 + 110 * k * k, pitch = .22 + .08 * k, roll = k > .55 ? Math.sin((k - .55) / .45 * Math.PI) * .18 : 0; pose(x, y, rz, 0, pitch, roll);
+      // ...and up quickly: a quadratic climb spent the first block or two skimming rooftops at ten
+      // metres. k^1.4 is off the ground and over the houses before the runway leaves the block.
+      const k = clamp01(this.t / 9), x = this.climbX + 36 * this.t + 2 * this.t * this.t, y = .35 + 110 * Math.pow(k, 1.4), pitch = .22 + .08 * k, roll = k > .55 ? Math.sin((k - .55) / .45 * Math.PI) * .18 : 0; pose(x, y, rz, 0, pitch, roll);
       cams = this.t < 4 ? windowCam() : [[x - 22 + k * 8, y - 2 + k * 8, rz + 10 - k * 4], [x + 4, y + 1, rz]]; cut = this.t > 4 && this.t < 4.1;
       if (this.t > 9) { this.phase = 'cruise'; this.t = 0; this.cruiseX = x; this.cruiseY = y; }
     } else if (this.phase === 'cruise') { // 22 s above the clouds; the country changes inside one of them

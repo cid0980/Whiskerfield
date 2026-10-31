@@ -193,6 +193,8 @@ export const railX = cx => cx * CHUNK - 9;
 export const COAST_CZ = -3, SHORE_Z = COAST_CZ * CHUNK - 26, SEA_R = 1e4;
 export const isSeaChunk = cz => cz < COAST_CZ, isCoastChunk = cz => cz === COAST_CZ;
 export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0 && cz > COAST_CZ;
+// The blocks just past either end of a runway: kept clear of anything a plane would fly through.
+export const runwayLane = (cx, cz) => [1, 2].some(d => isAirportChunk(cx - d, cz) || isAirportChunk(cx + d, cz));
 export const isStationChunk = (cx, cz) => isRailColumn(cx) && mod(cz, 2) === 0 && cz > COAST_CZ;
 
 export class World {
@@ -427,6 +429,10 @@ export class World {
     if (isCoastChunk(cz)) return isRailColumn(cx) ? 'rail-coast' : 'coast';
     if (cx === 0 && cz === 0) return 'square';
     if (isAirportChunk(cx, cz)) return 'airport';
+    // The approach and departure lanes: an airliner is only a few metres off the ground when it leaves
+    // the runway and comes back down the same way, so the two blocks beyond each end stay low (allotments
+    // and greenhouses) rather than a row of houses in the flight path.
+    if (runwayLane(cx, cz)) return 'allot';
     if (!isRailColumn(cx) && ((cx === -1 && cz === 1) || hash(cx, cz, this.seed, 78) % 9 === 0)) return 'lake';
     const h = hash(cx, cz, this.seed, 77) % 100;
     const t = h < 34 ? 'lanes' : h < 49 ? 'market' : h < 62 ? 'works' : h < 76 ? 'towers' : h < 88 ? 'play' : 'allot';
@@ -435,6 +441,7 @@ export class World {
   lotKind(cx, cz, i, r) {
     let t = this.theme(cx, cz); const v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
     if (t === 'airport') return 'airport';
+    if (runwayLane(cx, cz)) return i % 2 ? 'allotments' : 'park'; // approach lane: nothing tall to fly through
     if (cx === 0 && cz === -1 && i === 3) return 'balloon';
     if (t.startsWith('rail-')) {
       // The two western lots carry the line: a station every other chunk, sidings or a crossing otherwise.

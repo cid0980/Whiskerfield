@@ -622,12 +622,14 @@ test('indoors and abroad: furnished houses, a works floor, a train you can ride,
     for (let i = 0; i < 60 * 70 && !arrived; i++) { g.step(1 / 60); if (t.state === 'stop' && Math.abs(t.z + 16.5) < .5) arrived = true; }
     out.trainArrived = arrived;
     g.teleport(63, 4.3, -13.3); step(40); out.onTrain = g.getState().support; const z0 = g.player.pos.z; step(60 * 14); out.carried = +(g.player.pos.z - z0).toFixed(1);
+    // The carriages are hollow: a cat can stand inside, on the floor between the benches.
+    g.teleport(63, 1.3, t.z + 3.2); step(40); out.inCarriage = { support: g.getState().support, y: +g.player.pos.y.toFixed(2), seats: g.physics.query(63, t.z + 3.2, 4).filter(s => s.kind === 'seat').length };
     // Airport: up the steps, into the cabin, the departures card appears; fly to Sunmarch.
     g.teleport(146.1, .3, 12); step(40); g.hold.y = -1; g.setCamera(0); step(60 * 6); g.hold.y = 0; step(20);
     out.boarded = { support: g.getState().support, modal: g.getState().modal, y: +g.player.pos.y.toFixed(2) };
     out.flightOk = g.board('sunmarch'); const phases = []; let last = null;
-    for (let i = 0; i < 60 * 50 && g.flight.active; i++) { g.step(1 / 60); if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); } }
-    out.phases = phases; out.country = g.country; out.landedNear = Math.hypot(g.player.pos.x - 146.1, g.player.pos.z - 9.6) < 2; out.catVisible = g.cat.root.visible;
+    let seated = null; for (let i = 0; i < 60 * 90 && g.flight.active; i++) { g.step(1 / 60); if (g.flight.phase !== last) { last = g.flight.phase; phases.push(last); } if (g.flight.phase === 'cruise' && g.flight.t > 14 && !seated) seated = { visible: g.cat.root.visible, atSeat: g.player.pos.distanceTo(g.flight.seat) < .05, high: g.player.pos.y > 30, camInside: g.camera.position.distanceTo(g.flight.seat) < 4 }; }
+    out.phases = phases; out.country = g.country; out.seated = seated; out.landedNear = Math.hypot(g.player.pos.x - 144.1, g.player.pos.z + .05) < 1 && g.player.pos.y > 1.8; out.catVisible = g.cat.root.visible; out.doorOpen = [...g.planes.list.values()][0].doorOpen;
     out.seedLabel = document.getElementById('seed-label').textContent; out.airportsAbroad = g.world.airports.length; out.planesAbroad = g.planes.list.size;
     out.saved = JSON.parse(localStorage.getItem('whiskerfield.journey.v1')).country;
     return out;
@@ -636,10 +638,69 @@ test('indoors and abroad: furnished houses, a works floor, a train you can ride,
   expect(r.inHouse.support).toBe('floor'); expect(r.inHouse.y).toBeCloseTo(.42, 1); expect(r.inHouse.inside).toBe(true); expect(r.houseFound).toBe(true);
   expect(r.wallStop).toBe(true); expect(r.furniture).toBeGreaterThanOrEqual(3);
   expect(r.trainArrived).toBe(true); expect(r.onTrain).toBe('car'); expect(r.carried).toBeGreaterThan(5);
+  expect(r.inCarriage.support).toBe('car'); expect(r.inCarriage.y).toBeCloseTo(1.06, 1); expect(r.inCarriage.seats).toBeGreaterThanOrEqual(4);
   expect(r.boarded.modal).toBe('flight-modal'); expect(r.boarded.support).toBe('floor');
-  expect(r.flightOk).toBe(true); expect(r.phases).toEqual(['board', 'taxi', 'roll', 'climb', 'cloud', 'descend', 'rollout', 'stand', null]);
-  expect(r.country).toBe('sunmarch'); expect(r.landedNear).toBe(true); expect(r.catVisible).toBe(true); expect(r.seedLabel).toContain('Sunmarch');
+  expect(r.flightOk).toBe(true); expect(r.phases).toEqual(['board', 'taxi', 'roll', 'climb', 'cruise', 'descend', 'rollout', 'taxiIn', 'stand', null]);
+  expect(r.seated).toEqual({ visible: true, atSeat: true, high: true, camInside: true });
+  expect(r.country).toBe('sunmarch'); expect(r.landedNear).toBe(true); expect(r.catVisible).toBe(true); expect(r.doorOpen).toBe(1); expect(r.seedLabel).toContain('Sunmarch');
   expect(r.airportsAbroad).toBeGreaterThanOrEqual(1); expect(r.planesAbroad).toBeGreaterThanOrEqual(1); expect(r.saved).toBe('sunmarch');
   await page.reload(); await page.waitForFunction(() => window.__whiskerfield?.getState().ready, null, { timeout: 60000 });
   expect(await page.evaluate(() => window.__whiskerfield.country)).toBe('sunmarch');
+});
+
+test('time passes: dusk, night with lit windows, and dawn; the clock on the HUD follows', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {}, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    out.mode = g.day.mode; out.hourType = typeof g.day.hour;
+    const look = h => { g.day.mode = 'pin'; g.day.hour = h; g.day.update(1 / 60, g.camera, g.player.pos, g.world.lamps); return { label: g.day.label(), period: g.day.period(), night: +g.day.look.night.toFixed(2), sun: +g.day.look.sunI.toFixed(2), stars: +g.day.stars.material.opacity.toFixed(2), lit: g.day.lights.some(l => l.intensity > .05) }; };
+    out.noon = look(12); out.dusk = look(18.6); out.night = look(1); out.dawn = look(6.2);
+    out.lamps = g.world.lamps.length; out.cardPeriod = document.getElementById('clock-card').dataset.period !== undefined;
+    g.day.mode = 'cycle'; const h0 = g.day.hour; for (let i = 0; i < 30; i++) g.day.update(1 / 60, g.camera, g.player.pos, g.world.lamps); out.advances = g.day.hour !== h0;
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.mode).toBe('cycle'); expect(r.hourType).toBe('number');
+  expect(r.noon.period).toBe('afternoon'); expect(r.noon.night).toBeLessThan(.05); expect(r.noon.label).toMatch(/12:0\d/);
+  expect(r.dusk.period).toBe('sunset'); expect(r.night.period).toBe('night'); expect(r.night.night).toBeGreaterThan(.8); expect(r.dawn.period).toBe('dawn');
+  expect(r.night.sun).toBeLessThan(r.noon.sun); expect(r.night.stars).toBeGreaterThan(.5); expect(r.noon.stars).toBeLessThan(.05);
+  expect(r.lamps).toBeGreaterThan(0); expect(r.night.lit).toBe(true); expect(r.noon.lit).toBe(false); expect(r.advances).toBe(true);
+});
+
+test('water: a lake with a jetty and boats that go where you point them, a seafront, open sea; balloons that ride the wind', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {}, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    // The lake fills the block south-west of the square; the cat cannot walk into it.
+    g.teleport(-103, .3, 80); step(30); out.lake = g.world.landmarks.find(l => l.kind === 'lake'); out.lakeWater = !!g.world.inWater(-72, 72);
+    g.setCamera(-Math.PI / 2); g.hold.y = -1; step(120); g.hold.y = 0; out.stoppedAtEdge = g.player.pos.x < -92 && g.player.pos.x > -97 && !g.world.inWater(g.player.pos.x, g.player.pos.z);
+    // Along the jetty, onto a boat; point it east and it keeps going; point it north and it turns; it stops at the shore.
+    g.teleport(-92, .6, 72); step(30); out.jetty = g.getState().support; g.setCamera(0); g.hold.y = -1; step(28); g.hold.y = 0; step(10); out.aboard = g.getState().support;
+    const boat = g.vehicles.list.get('-1,1:boat0'); const x0 = g.player.pos.x;
+    g.hold.x = 1; step(60); g.hold.x = 0; step(240); out.sailed = { dx: +(g.player.pos.x - x0).toFixed(1), speed: +boat.speed.toFixed(1), support: g.getState().support, onBoat: Math.hypot(g.player.pos.x - boat.x, g.player.pos.z - boat.z) < 2.2 };
+    g.hold.y = -1; step(30); g.hold.y = 0; step(60 * 12); out.shore = { z: +boat.z.toFixed(1), speed: +boat.speed.toFixed(1), heading: +boat.heading.toFixed(2), support: g.getState().support };
+    // Pushing toward dry land from a moored boat walks the cat off instead of steering.
+    g.setCamera(0); g.hold.y = -1; step(90); g.hold.y = 0; out.walkedOff = g.getState().support !== 'boat' && boat.speed < .1;
+    // The seafront: a promenade, a pier, a lighthouse, boats at the quay; nothing but sea beyond; no airports or stations out there.
+    g.teleport(0, .3, -214); step(30); out.coast = g.world.landmarks.find(l => l.kind === 'coast'); out.seaIsWater = !!g.world.inWater(0, -300)?.sea; out.beachDry = !g.world.inWater(0, -236);
+    out.pier = g.physics.query(0, -250, .3).some(s => s.kind === 'pier'); out.lighthouse = g.physics.query(0, -264.2, .5).some(s => s.kind === 'lighthouse'); out.harbourBoats = [...g.vehicles.list.values()].filter(v => v.kind === 'boat' && v.spec.id.startsWith('0,-3')).length;
+    out.seaTheme = g.world.theme(0, -5); out.noSeaAirport = g.world.airports.every(a => a.z > -200); out.seaChunkLoaded = g.world.chunks.has('0,-4');
+    // Balloon field: up the steps into the basket, wait, and go up; the basket carries the cat; it comes down again.
+    g.teleport(19.7, .3, -55.5); step(30); out.balloonField = g.world.landmarks.find(l => l.kind === 'balloons'); g.setCamera(Math.PI / 2); g.hold.y = -1; step(60); g.hold.y = 0; step(30);
+    const v = g.vehicles.list.get('0,-1:3:balloon'); out.inBasket = { support: g.getState().support, y: +g.player.pos.y.toFixed(2) };
+    step(60 * 12); out.rising = { state: v.state, y: +v.y.toFixed(1), catY: +g.player.pos.y.toFixed(1), support: g.getState().support };
+    let n = 0; while (v.state !== 'landed' && n < 60 * 240) { step(30); n += 30; }
+    out.landed = { state: v.state, moved: +Math.hypot(v.x - 16.5, v.z + 55.5).toFixed(0), catWith: Math.hypot(g.player.pos.x - v.x, g.player.pos.z - v.z) < 1.2, catY: +(g.player.pos.y - v.y).toFixed(2) };
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.lake).toBeTruthy(); expect(r.lakeWater).toBe(true); expect(r.stoppedAtEdge).toBe(true);
+  expect(r.jetty).toBe('jetty'); expect(r.aboard).toBe('boat');
+  expect(r.sailed.dx).toBeGreaterThan(8); expect(r.sailed.speed).toBeGreaterThan(3); expect(r.sailed.support).toBe('boat'); expect(r.sailed.onBoat).toBe(true);
+  expect(r.shore.speed).toBe(0); expect(r.shore.z).toBeLessThan(54); expect(Math.abs(r.shore.heading)).toBeLessThan(.2); expect(r.shore.support).toBe('boat'); expect(r.walkedOff).toBe(true);
+  expect(r.coast).toBeTruthy(); expect(r.seaIsWater).toBe(true); expect(r.beachDry).toBe(true); expect(r.pier).toBe(true); expect(r.lighthouse).toBe(true); expect(r.harbourBoats).toBe(2);
+  expect(r.seaTheme).toBe('sea'); expect(r.noSeaAirport).toBe(true); expect(r.seaChunkLoaded).toBe(true);
+  expect(r.balloonField).toBeTruthy(); expect(r.inBasket.support).toBe('balloon'); expect(r.inBasket.y).toBeCloseTo(.5, 1);
+  expect(r.rising.state).toBe('rising'); expect(r.rising.y).toBeGreaterThan(5); expect(r.rising.catY).toBeGreaterThan(5); expect(r.rising.support).toBe('balloon');
+  expect(r.landed.state).toBe('landed'); expect(r.landed.moved).toBeGreaterThan(60); expect(r.landed.catWith).toBe(true); expect(r.landed.catY).toBeCloseTo(.5, 1);
 });

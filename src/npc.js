@@ -184,7 +184,7 @@ class Person {
       const reverse = axis === this.axis && dir === -this.dir;
       options.push({ axis, dir, next, weight: reverse ? (any ? 1 : .08) : axis === this.axis ? 1.5 : 1 });
     }
-    if (!options.length) return;
+    if (!options.length) { this.target = { x: node.x, z: node.z }; this.state = 'idle'; this.timer = 2 + Math.random() * 3; this.speed = 0; return; } // nowhere to go but the water: wait here
     let total = options.reduce((a, o) => a + o.weight, 0), pick = Math.random() * total, chosen = options[0];
     for (const o of options) { pick -= o.weight; if (pick <= 0) { chosen = o; break; } }
     this.axis = chosen.axis; this.dir = chosen.dir;

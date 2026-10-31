@@ -87,6 +87,17 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.0** – The towns, the trains, the planes, the water and the people all get their polish. Ten
+  reports from the owner, fixed in pairs, each pushed on its own: the camera is one orbit rig that pulls
+  in rather than through walls, knows when it is inside a room, and never shakes when the cat is cornered;
+  the cat no longer scrambles over knee-high clutter, swims when it walks into the lake, and climbs onto
+  roofs it could not reach before (an overhanging eave now gets hooked over instead of stopping the
+  climb); furniture is kept clear of doorways and tower stairs are real stairs; the cat walks the length
+  of a train carriage and sits in the aisle of a plane that no longer skims rooftops on the way out or
+  comes down through a house on the way in; boats answer the stick, balloons drift with the wind and are
+  boarded from a landing field; the minimap shows the town around the cat; people sit properly on their
+  seats and turn to watch the cat go by. The whole suite (24 tests, one camera, movement, interiors and
+  travel each) runs green.
 - **1.7.10** – The flight path keeps to the flight path. 1.7.9 kept the blocks beyond each end of a runway clear of buildings, which took a whole block's worth of shops and houses out of the town either side of the airport. Only the two lots the runway actually points down are kept low now (allotments and a green patch), so the plane still comes down over empty ground and the town around it keeps its character.
 - **1.7.9** – Rooftops you can actually reach. A cat climbing the outside of a house used to stop dead at the eaves: the roof edge overhangs the wall, so its head met the underside of the overhang a paw's width short of the top and it slid back down — on a single-storey house with a low roof, that meant the roof was unreachable. A climbing cat now hooks over a thin eave or ledge within reach and pulls itself up onto it (the same move it makes at the top of any wall), and a facade that carries on above the ground-floor wall — an upper storey standing on it — is climbed as one face instead of being abandoned at the ledge between the two.
 - **1.7.8** – People sit down properly. Anyone sitting — the café customers, the office floor, the regulars in the grocer — used to hover a third of a metre above their chair, because the seated pose lowered the body by a fixed amount instead of to the seat. The seat is now measured (whatever is actually under them: a café chair, an office chair, a bench), and the hips come down to it, so a seated person is sitting on the chair. They also turn their head and shoulders round to watch the cat go by instead of staring at their job, and say hello when you come within a step. Knee-length skirts became mid-thigh, so sitting no longer puts their legs through the cloth.

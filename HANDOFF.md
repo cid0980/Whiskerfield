@@ -171,6 +171,9 @@ riding the train/balloon without the view lagging; walking past scenery without 
 
 ## 7. OPEN BUGS — the owner's list (do these, in this order, in pushed pairs)
 
+**Empty as of 1.8.0.** All ten items below are done; the list stays here as the record of what was
+fixed and why. New reports from the owner go at the top of this section.
+
 Plan each one (read the relevant code first, reproduce with a `scripts/*.tmp.mjs` Playwright script and
 a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
@@ -219,9 +222,11 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    falls). Never build a walkable slope out of tilted boxes; use upright treads.
 8. **[DONE in 1.7.7, pair D]** Planes clipping buildings. Two causes. (1) The climb was quadratic
    (`y = .35 + 110k²`), so the plane spent its first block or two skimming rooftops at ten metres;
-   it is now `110 * k^1.4`, and the *blocks either side of every runway* are cleared of buildings —
-   `runwayLane(cx, cz)` in world.js makes `theme()` 'allot' and `lotKind()` park/allotments for
-   `cx ± 1, 2` of an airport chunk. (2) `lotKind` must return real lot kinds ('allotments'), not a
+   it is now `110 * k^1.4`, and the *two lots either end of every runway* are cleared of buildings —
+   `runwayLane(cx, cz)` in world.js (one block east or west of an airport chunk) makes `lotKind()`
+   park/allotments for the northern row only (`i >= 2`), the row the runway points down. **Do not**
+   widen this to whole blocks or to two blocks: 1.7.7 did, and it took a block's worth of shops,
+   markets and houses out of the town either side of the airport, which the town tests felt at once. (2) `lotKind` must return real lot kinds ('allotments'), not a
    theme name ('allot') — the wrong word silently falls through to a house. Test checks every frame of
    a full flight: no building within 3 m of the plane's path while airborne, plus the lane kinds.
 9. **[DONE in 1.7.7, pair D]** Moving about the plane. The seat solids were one slab per *pair* of

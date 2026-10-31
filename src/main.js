@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World, CHUNK, hashString, random, districtName, COUNTRIES, COUNTRY_IDS } from './world.js';
 import { Train } from './train.js';
 import { Lifts } from './lifts.js';
+import { DayCycle } from './daynight.js';
 import { Planes, Flight, Sky, PLANE } from './plane.js';
 import { Cat } from './cat.js';
 import { NeighborhoodAudio } from './audio.js';
@@ -47,7 +48,7 @@ const outfit = cleanOutfit(saved?.outfit && typeof saved.outfit === 'object' ? s
 let hatId = outfit.hat;
 // Shinies found in other countries of the same town used to live in their own journeys; fold them in.
 for (const k of Object.keys(localStorage)) if (saved?.seed && k.startsWith(SAVE_KEY + ':' + saved.seed + '~')) { try { const j = JSON.parse(localStorage.getItem(k)); for (const v of j?.shinies || []) if (typeof v === 'string' && !v.includes('/')) savedShinies.push(k.slice((SAVE_KEY + ':' + saved.seed + '~').length) + '/' + v); } catch {} }
-let fun = null, ducks = null, train = null, lifts = null, planes = null, sky = null, boardTimer = 0, boardingPlane = null;
+let fun = null, ducks = null, train = null, lifts = null, day = null, hemi = null, planes = null, sky = null, boardTimer = 0, boardingPlane = null;
 const flight = new Flight();
 let countryId = COUNTRIES[saved?.country] ? saved.country : 'whiskerfield';
 const journeyKey = (seed, country) => country && country !== 'whiskerfield' ? seed + '~' + country : seed;
@@ -75,7 +76,7 @@ const markDirty = () => { saveDirty = true; };
 function save() {
   if (!world) return;
   saveDirty = false; lastSaved = { x: player.pos.x, z: player.pos.z, yaw: cameraYaw };
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: outfit.hat, outfit, settings, started })); }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, seed: world.seedText, country: countryId, position: { x: player.pos.x, y: player.pos.y, z: player.pos.z }, heading: player.heading, cameraYaw, roofs: [...visitedRoofs].slice(-10000), gardens: [...visitedGardens].slice(-10000), places: [...visitedPlaces].slice(-10000), friends: friendsMade, shinies: [...fun.collected].slice(-20000), knocks: fun.knocks, hat: outfit.hat, outfit, settings, started, hour: day ? day.hour : undefined })); }
   catch { if (!storageWarning) { storageWarning = true; toast('Saving is blocked in this browser (private mode?). Progress will not be kept.', 'note', 5000); } }
 }
 // One quiet line at the top of the screen; never a panel over the world.
@@ -90,6 +91,7 @@ function syncSettings() {
   for (const [id, key] of [['audio-toggle', 'audio'], ['shadow-toggle', 'shadows'], ['motion-toggle', 'reducedMotion'], ['immersive-toggle', 'immersive']]) {
     $(id).classList.toggle('on', !!settings[key]); $(id).setAttribute('aria-checked', String(!!settings[key]));
   }
+  for (const b of document.querySelectorAll('#time-options button')) b.classList.toggle('on', (settings.time || 'cycle') === b.dataset.time);
   $('volume-slider').value = Math.round(settings.volume * 100); $('volume-label').textContent = Math.round(settings.volume * 100) + '%';
   $('sensitivity-slider').value = Math.round(settings.sensitivity * 100); $('sensitivity-label').textContent = Math.round(settings.sensitivity * 100) + '%';
   setIcon($('sound-button'), settings.audio ? '#i-sound' : '#i-muted'); $('sound-button').setAttribute('aria-label', settings.audio ? 'Turn sound off' : 'Turn sound on');
@@ -146,10 +148,11 @@ function init() {
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = settings.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, .08, 350);
-  scene.add(new THREE.HemisphereLight('#dfe6d8', '#7e8a68', 1.35));
+  hemi = new THREE.HemisphereLight('#dfe6d8', '#7e8a68', 1.35); scene.add(hemi);
   sun = new THREE.DirectionalLight('#ffe6c0', 2.2); sun.position.set(-35, 60, 25); sun.castShadow = true;
   sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048); sun.shadow.camera.left = -36; sun.shadow.camera.right = 36; sun.shadow.camera.top = 36; sun.shadow.camera.bottom = -36; sun.shadow.camera.near = 1; sun.shadow.camera.far = 150; sun.shadow.bias = -.0003; sun.shadow.normalBias = .03; sun.shadow.radius = 3;
-  scene.add(sun); scene.add(sun.target);
+  scene.add(sun); scene.add(sun.target); flight.attach(scene);
+  day = new DayCycle(scene, renderer, sun, hemi); day.setMode(settings.time || 'cycle'); if (typeof saved?.hour === 'number' && (settings.time || 'cycle') === 'cycle') day.hour = saved.hour;
   const groundTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128); for (let i = 0; i < 2400; i++) { x.fillStyle = `rgba(60,75,45,${Math.random() * .1})`; x.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(180, 180); return t; })();
   ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: '#93a86f', roughness: 1, map: groundTex })); ground.rotation.x = -Math.PI / 2; ground.position.y = -.45; ground.receiveShadow = true; scene.add(ground);
   createWorld(urlSeed || saved?.seed || defaultSeed(), countryId);
@@ -164,7 +167,7 @@ function init() {
   if (params.get('test') === '1') window.__whiskerfield = {
     player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); const ride = train.update(dt, player.pos, !!player.support?.train); if (player.support?.train && !flight.active) player.pos.z += ride; lifts.sync(); const lifted = lifts.update(dt, player.pos, player.support); if (lifted) player.pos.y += lifted; if (flight.active) flight.update(dt); else { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; } planes.sync(); time += dt; }, get fun() { return fun; }, get ducks() { return ducks; }, get train() { return train; }, get planes() { return planes; }, flight, get country() { return countryId; }, travel, offerFlight, board: id => beginFlight(id), wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
     getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
-    wear, outfit, wardrobe, get lifts() { return lifts; }, teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
+    wear, outfit, wardrobe, get lifts() { return lifts; }, get day() { return day; }, teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
     getSettings: () => ({ ...settings })
   };
@@ -172,7 +175,7 @@ function init() {
 
 function applyCountryLook() {
   const c = COUNTRIES[countryId];
-  scene.background.set(c.sky); scene.fog.color.set(c.sky); ground.material.color.set(c.ground);
+  scene.fog.color.set(c.sky); ground.material.color.set(c.ground); if (day) day.setDaySky(c.sky);
   if (leafMesh) leafMesh.material.color.set(c.leaf);
   $('seed-label').textContent = 'Seed: ' + world.seedText + (countryId === 'whiskerfield' ? '' : ' · ' + c.name);
   document.body.dataset.country = countryId;
@@ -320,6 +323,7 @@ function createUI() {
   $('audio-toggle').addEventListener('click', () => { settings.audio = !settings.audio; audio.setEnabled(settings.audio); syncSettings(); save(); });
   $('shadow-toggle').addEventListener('click', () => { settings.shadows = !settings.shadows; syncSettings(); renderer.shadowMap.needsUpdate = true; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); save(); });
   $('motion-toggle').addEventListener('click', () => { settings.reducedMotion = !settings.reducedMotion; syncSettings(); save(); });
+  for (const b of document.querySelectorAll('#time-options button')) b.addEventListener('click', () => { settings.time = b.dataset.time; day.setMode(settings.time); syncSettings(); save(); });
   $('immersive-toggle').addEventListener('click', () => { settings.immersive = !settings.immersive; syncSettings(); save(); });
   $('volume-slider').addEventListener('input', e => { settings.volume = Number(e.target.value) / 100; audio.setVolume(settings.volume); $('volume-label').textContent = e.target.value + '%'; save(); });
   $('sensitivity-slider').addEventListener('input', e => { settings.sensitivity = Number(e.target.value) / 100; $('sensitivity-label').textContent = e.target.value + '%'; save(); });
@@ -420,16 +424,25 @@ function offerFlight(plane) {
 function beginFlight(id) {
   const plane = boardingPlane || planes.at(player.pos) || [...planes.list.values()][0];
   if (!plane || !COUNTRIES[id] || id === countryId) return false;
-  closeModal(); resting = false; clearInput(); cat.root.visible = false; audio.jet();
-  flight.begin(plane, id); toast('Doors closing. Hold on to something.', 'sun', 2600);
+  closeModal(); resting = false; clearInput(); audio.jet(); document.body.classList.add('flying');
+  flight.begin(plane, id); toast(`Doors closing. This is the flight to ${COUNTRIES[id].name}.`, 'sun', 3000);
   return true;
 }
 flight.onFade = v => { const f = $('fade'); f.style.opacity = v; f.hidden = v <= 0; };
-flight.onTravel = id => travel(id);
+$('skip-flight').addEventListener('click', () => { flight.skip(); });
+flight.onTravel = id => { const airport = travel(id); planes.sync(); const np = planes.list.get(airport.id); if (np) { np.flying = true; np.updateSolids(false); np.setDoor(0); flight.plane = np; } return airport; };
 flight.onArrive = airport => {
-  player.pos.set(airport.door.x, .3, airport.stand.z + 8.6); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = Math.PI;
-  cat.root.visible = true; cat.root.position.copy(player.pos); cameraYaw = cameraYawTarget = Math.PI + .4; cameraTarget.copy(player.pos);
+  // The cat stays in its seat; the door is open, the steps are down, and the rest is up to it.
+  player.pos.copy(flight.seat); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = true; player.heading = Math.PI / 2;
+  cat.root.position.copy(player.pos); cameraYaw = cameraYawTarget = -.3; cameraPitch = cameraPitchTarget = .42; cameraDistance = cameraDistanceTarget = 2.6; cameraTarget.copy(player.pos); boardTimer = -999;
   toast(COUNTRIES[countryId].line, 'sun', 4200); audio.discovery(); save();
+};
+flight.onPhase = (phase) => {
+  document.body.classList.toggle('flying', flight.active);
+  const name = COUNTRIES[flight.to]?.name || '';
+  const lines = { taxi: 'Taxiing out. Seat belts on, tails in.', roll: 'Take-off.', climb: 'Climbing. Look out of the window.', cruise: 'Cruising above the clouds.', descend: `Descending into ${name}.`, taxiIn: 'Taxiing to the stand.', stand: `Doors open. Welcome to ${name}.` };
+  if (lines[phase]) toast(lines[phase], phase === 'stand' ? 'sun' : 'note', 2600);
+  if (phase === 'climb' || phase === 'descend') audio.jet();
 };
 // Swap the whole town for the destination country's, keeping the cat, the hat, and the settings.
 function travel(id) {
@@ -745,28 +758,29 @@ function loop(now) {
   const frameMs = now - (lastTime || now - 16), dt = Math.min(.12, Math.max(.001, frameMs / 1000)); lastTime = now; time += dt;
   if (started) { adaptQuality(frameMs); playTime += dt; }
   pollGamepad(dt);
-  if (world.update(player.pos, 1)) fun.sync(); world.animate(time);
+  if (world.update(flight.active ? flight.anchor : player.pos, 1)) fun.sync(); world.animate(time);
   const ride = train.update(dt, player.pos, !!player.support?.train);
   if (player.support?.train && !flight.active) player.pos.z += ride;
   const lifted = lifts.update(dt, player.pos, player.support);
   if (lifted) player.pos.y += lifted;
   if (started && !modal) simulate(dt); else { player.speed = 0; player.turnRate = 0; player.accel = 0; wallHint = null; }
-  if (flight.active) flight.update(dt);
+  if (flight.active) { flight.update(dt); if (flight.active && flight.plane) { player.pos.copy(flight.seat); player.vx = player.vz = player.vy = 0; player.grounded = true; player.heading = flight.plane.group.rotation.y + Math.PI / 2; } }
   else if (started && !modal) { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; }
   sky.update(dt, player.pos);
   cat.root.position.copy(player.pos); cat.root.rotation.y = player.heading;
+  if (flight.active && flight.plane) { cat.root.quaternion.copy(flight.plane.group.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2)); }
   const groundY = physics.support(player.pos.x, player.pos.z, player.pos.y + .05).y;
-  cat.update(dt, time, { speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, resting, vy: player.vy, turnRate: player.turnRate, accel: player.accel, landImpact: player.landImpact, runBlend: player.runBlend }, groundY, settings.reducedMotion);
+  cat.update(dt, time, { speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, resting: resting || flight.active, vy: player.vy, turnRate: player.turnRate, accel: player.accel, landImpact: player.landImpact, runBlend: player.runBlend }, groundY, settings.reducedMotion);
   people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed);
   if (started && !modal) fun.update(dt, player, people);
   ducks.update(dt, player.pos, time);
   if (!started && !settings.reducedMotion) cameraYawTarget += dt * .03;
   updateCamera(dt); updateAtmosphere(dt); audio.update(dt); updateBubble();
   ground.position.x = player.pos.x; ground.position.z = player.pos.z;
-  sun.position.set(player.pos.x - 35, 60, player.pos.z + 25); sun.target.position.set(player.pos.x, 0, player.pos.z);
+  day.update(dt, camera, player.pos, world.lamps);
   hudTimer += dt;
   if (hudTimer > .25) {
-    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync(); ducks.sync(player.pos); planes.sync(); lifts.sync();
+    hudTimer = 0; if (started && !modal) checkDiscoveries(); fun.sync(); ducks.sync(player.pos); planes.sync(); lifts.sync(); $('clock-label').textContent = day.label(); $('clock-card').dataset.period = day.period();
     const showHint = !!wallHint && !player.climbing && !resting && started && !modal && player.grounded;
     $('context-hint').classList.toggle('visible', showHint && !mobile);
     $('touch-climb').classList.toggle('ready', showHint);

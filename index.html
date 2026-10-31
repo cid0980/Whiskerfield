@@ -55,6 +55,7 @@
     <header class="topbar hud">
       <a class="brand" href="#" id="brand" aria-label="Whiskerfield settings"><span class="brand-mark"><svg class="icon"><use href="#i-cat"/></svg></span><strong>Whiskerfield</strong></a>
       <div class="location-card play-hud" id="location-card"><svg class="icon"><use href="#i-leaf"/></svg><span id="district-name">Clover Quarter</span></div>
+      <div class="location-card clock-card play-hud" id="clock-card" data-period="morning" title="Time of day"><span class="clock-dot"></span><span id="clock-label">9:12</span></div>
       <div class="top-actions">
         <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Loading…</span></span>
         <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends · shinies"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span><span><svg class="icon"><use href="#i-star"/></svg><b id="shiny-count">0</b></span></div>
@@ -99,6 +100,7 @@
   </main>
 
   <div id="fade" aria-hidden="true" hidden></div>
+  <button class="skip-flight" id="skip-flight" type="button">Skip ahead</button>
   <div class="modal-backdrop" id="modal-backdrop" hidden>
     <section class="modal" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
       <button class="modal-close icon-button" data-close aria-label="Close instructions"><svg class="icon"><use href="#i-close"/></svg></button>
@@ -121,6 +123,7 @@
       <div class="setting-row"><div><label for="sensitivity-slider">Camera sensitivity</label><small id="sensitivity-label">70%</small></div><input type="range" id="sensitivity-slider" min="20" max="150" value="70" aria-label="Camera sensitivity"></div>
       <div class="setting-row"><div><strong>Fullscreen on phones</strong><small>Go fullscreen and lock to landscape when you press Play</small></div><button class="toggle on" id="immersive-toggle" role="switch" aria-checked="true" aria-label="Fullscreen landscape on play"><span></span></button></div>
       <div class="setting-row"><div><strong>Shadows</strong><small>Turn off on older devices for a smoother frame rate</small></div><button class="toggle on" id="shadow-toggle" role="switch" aria-checked="true" aria-label="Soft shadows"><span></span></button></div>
+      <div class="setting-row"><div><strong>Time of day</strong><small>Let the day turn, or keep a favourite light</small></div><div class="segmented" id="time-options"><button data-time="cycle" class="on">Cycle</button><button data-time="day">Day</button><button data-time="sunset">Sunset</button><button data-time="night">Night</button></div></div>
       <div class="setting-row"><div><strong>Reduce motion</strong><small>Less camera sway, fewer drifting leaves</small></div><button class="toggle" id="motion-toggle" role="switch" aria-checked="false" aria-label="Gentler motion"><span></span></button></div>
       <div class="setting-row world-seed"><div><strong>World</strong><small id="seed-label">Seed: clover-108</small></div><button class="secondary-button" id="new-world-button">New town</button></div>
       <div class="new-world-confirm" id="new-world-confirm" hidden><p>This replaces the current town and its discoveries. The old one is kept under its seed, so you can come back with <code>?seed=…</code>.</p><div><button class="secondary-button" id="cancel-new-world">Cancel</button><button class="primary-button" id="confirm-new-world">New town</button></div></div>

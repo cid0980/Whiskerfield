@@ -285,3 +285,16 @@ input[type=range]{width:150px;accent-color:var(--orange);flex-shrink:0}
 .hat-card.collect.locked .swatch{filter:grayscale(1);opacity:.5}
 .hat-card.tally{grid-column:1/-1;background:var(--paper-2)}
 @media (max-width:640px){.wardrobe{grid-template-columns:1fr}.wardrobe-stage{max-width:220px;margin:0 auto}.wardrobe .hat-list{max-height:none}}
+
+/* clock + time segmented control */
+.clock-card{gap:.4rem}
+.clock-dot{width:.6rem;height:.6rem;border-radius:50%;background:#e9c04b;box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+#clock-card[data-period="night"] .clock-dot,#clock-card[data-period="dusk"] .clock-dot{background:#9fb4e6}
+#clock-card[data-period="sunset"] .clock-dot,#clock-card[data-period="dawn"] .clock-dot{background:#f29b4b}
+.segmented{display:flex;gap:.25rem;flex-wrap:wrap}
+.segmented button{border:1px solid rgba(0,0,0,.14);background:rgba(255,255,255,.6);border-radius:999px;padding:.3rem .7rem;font:inherit;font-size:.85rem;cursor:pointer;color:inherit}
+.segmented button.on{background:#2f3331;color:#fff;border-color:#2f3331}
+
+.skip-flight{position:fixed;right:1rem;bottom:1rem;z-index:30;display:none;border:0;border-radius:999px;padding:.55rem 1rem;font:inherit;font-weight:600;background:rgba(47,51,49,.78);color:#fff;cursor:pointer;backdrop-filter:blur(6px)}
+body.flying .skip-flight{display:block}
+body.flying #touch-controls,body.flying .context-hint{visibility:hidden}

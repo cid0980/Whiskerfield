@@ -14,7 +14,7 @@ export class Train {
     const batch = new Batch(); this.spec = buildTrain(batch);
     this.mesh = new THREE.Mesh(batch.geometry(), world.material); this.mesh.castShadow = true; this.mesh.receiveShadow = true; this.mesh.name = 'train';
     this.group = new THREE.Group(); this.group.add(this.mesh); scene.add(this.group);
-    this.solids = this.spec.boxes.map(b => ({ shape: 'box', kind: 'car', train: true, climbable: true, x: 0, z: 0, r: Math.max(b.w, b.d) / 2 + .2, local: b, minX: 0, maxX: 0, minY: b.y - b.h / 2, maxY: b.y + b.h / 2, minZ: 0, maxZ: 0 }));
+    this.solids = this.spec.boxes.map(b => ({ shape: 'box', kind: b.kind || 'car', train: true, climbable: b.climbable ?? true, x: 0, z: 0, r: Math.max(b.w, b.d) / 2 + .2, local: b, minX: 0, maxX: 0, minY: b.y - b.h / 2, maxY: b.y + b.h / 2, minZ: 0, maxZ: 0 }));
     for (const s of this.solids) physics.dynamic.push(s);
     this.puffs = []; const puffMat = new THREE.MeshLambertMaterial({ color: '#f1efe8', transparent: true, opacity: .55 }), puffGeo = new THREE.SphereGeometry(1, 7, 6);
     for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(puffGeo, puffMat.clone()); m.visible = false; scene.add(m); this.puffs.push({ mesh: m, t: 2 }); }

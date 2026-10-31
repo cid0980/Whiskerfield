@@ -195,7 +195,7 @@ export function makeTower(W, c, x, z, r, id, tall = 1) {
     KITS[kit](W, c, room, y, r, 2);
     // Call button and floor number by the shaft, a strip of lights, a window band so the floor reads from outside.
     b.box(shaft.minX - .08, y + 1.1, shaft.maxZ + .3, .12, .18, .12, '#e9e3d2'); b.ball(shaft.minX - .14, y + 1.1, shaft.maxZ + .3, .03, .03, .03, '#e9c04b');
-    b.box(x, y + fh - .25, z + 1, 1.2, .06, .3, '#f6ecc8');
+    b.box(x, y + fh - .25, z + 1, 1.2, .06, .3, '#f6ecc8', 0, .8);
     if (k % 3 === 1) c.landmarks.push({ id: `${id}:f${k}`, kind: 'floor', x, z: z + 2, radius: 4.5, name: `floor ${k}, ${PLACE_NAMES[kit] || kit}`, y, inside: room });
   }
   // The shaft itself: three glass sides and guide rails; open towards the room.
@@ -412,7 +412,7 @@ export function makeStation(W, c, x, z, r, id) {
   b.box(x - 4, .02, z, 16, .1, 24, '#b3ab97'); paving(c, x - 4, z, 16, 24, .07);
   c.stations = c.stations || []; c.stations.push({ x: tx, z, platformX: x - 2.5 });
   // Platform, a metre up, with three steps at the near end and a yellow safety line.
-  const pw = 13, pd = 20, px = x - 2.5, ph = 1;
+  const pw = 14.6, pd = 20, px = x - 1.7, ph = 1;
   b.box(px, ph / 2, z, pw, ph, pd, '#c9bfa6'); W.solid(c, px, ph / 2, z, pw, ph, pd, { kind: 'floor', climbable: false });
   b.box(px + pw / 2 - .35, ph + .01, z, .5, .03, pd, '#e3c35a');
   b.box(px, ph + .005, z, pw - .2, .02, pd - .2, '#d5cbb1');
@@ -600,14 +600,36 @@ export function buildTrain(b) {
   boxes.push({ x: ex, y: ty + 1.5, z: ez, w: 2.6, h: 3.1, d: 7 });
   // Driver: a simple figure at the cab window.
   b.box(ex + .9, ty + 1.7, ez + 2.3, .36, .5, .3, '#4f5d6b'); b.ball(ex + .9, ty + 2.1, ez + 2.3, .14, .16, .14, '#e3b98f'); b.cyl(ex + .9, ty + 2.27, ez + 2.3, .16, .08, '#2f3331');
-  let cz = 3.2; const cl = 10;
+  let cz = 3.2; const cl = 10, fy = ty + .61, wallH = 2.25, doorW = 1.3;
   for (let n = 0; n < 2; n++, cz += cl + .7) {
+    const paint = n ? '#6f6252' : '#8f5f4e', trim = '#e8dfc4';
     b.box(ex, ty + .35, cz, 2.6, .5, cl, '#3f4a46'); wheels(cz, 4, cl);
-    b.box(ex, ty + 1.7, cz, 2.6, bodyH, cl, n ? '#6f6252' : '#8f5f4e'); b.box(ex, ty + 1.3, cz, 2.66, .5, cl + .02, '#e8dfc4');
-    for (let k = 0; k < 5; k++) for (const s of [-1, 1]) { b.box(ex + s * 1.31, ty + 2.1, cz - cl / 2 + 1.3 + k * 1.9, .04, .9, 1.1, '#a9c3c9'); if (k % 2 === n % 2) { b.ball(ex + s * 1.1, ty + 2.05, cz - cl / 2 + 1.3 + k * 1.9, .13, .15, .13, '#e3b98f'); b.box(ex + s * 1.1, ty + 1.75, cz - cl / 2 + 1.3 + k * 1.9, .3, .4, .3, ['#c9524a', '#4f7f96', '#6f9a4f', '#d9a53a'][k % 4]); } }
+    // Floor (you can walk in), end walls, side walls split round a door in the middle of each side
+    // with window holes, running boards under the doors, and a roof you can still ride on.
+    b.box(ex, fy - .08, cz, 2.6, .16, cl, '#4a4f4c'); b.box(ex, fy + .005, cz, 2.3, .01, cl - .3, '#a8947a');
+    boxes.push({ x: ex, y: fy - .08, z: cz, w: 2.6, h: .16, d: cl, kind: 'car', climbable: false });
+    for (const e of [-1, 1]) { b.box(ex, fy + wallH / 2, cz + e * (cl / 2 - .04), 2.6, wallH, .08, paint); b.box(ex, fy + 1.4, cz + e * (cl / 2 - .02), .8, .7, .12, '#a9c3c9'); boxes.push({ x: ex, y: fy + wallH / 2, z: cz + e * (cl / 2 - .04), w: 2.6, h: wallH, d: .08, kind: 'wall', climbable: false }); }
+    for (const s of [-1, 1]) {
+      const wx = ex + s * 1.27;
+      for (const e of [-1, 1]) {
+        const z0 = e < 0 ? cz - cl / 2 : cz + doorW / 2, z1 = e < 0 ? cz - doorW / 2 : cz + cl / 2, zm = (z0 + z1) / 2, len = z1 - z0;
+        b.box(wx, fy + .45, zm, .08, .9, len, paint); b.box(wx, fy + 1.95, zm, .08, .6, len, paint); // panels below and above the windows
+        b.box(wx + s * .02, fy + .9, zm, .06, .12, len, trim);
+        const bays = 2; for (let k = 0; k <= bays; k++) b.box(wx, fy + 1.4, z0 + k * (len / bays), .08, 1.1, k === 0 || k === bays ? .3 : .2, paint); // pillars
+        boxes.push({ x: wx, y: fy + wallH / 2, z: zm, w: .08, h: wallH, d: len, kind: 'wall', climbable: false });
+        // Two facing benches in each bay, and somebody on most of them.
+        for (let k = 0; k < bays; k++) { const bz = z0 + (k + .5) * (len / bays); for (const f of [-1, 1]) { const sz = bz + f * .78; b.box(wx - s * .5, fy + .25, sz, .7, .1, .44, '#4f7f96'); b.box(wx - s * .5, fy + .6, sz + f * .2, .7, .8, .08, '#4f7f96'); boxes.push({ x: wx - s * .5, y: fy + .25, z: sz, w: .7, h: .5, d: .46, kind: 'seat', climbable: true });
+          if ((k + (f > 0 ? 1 : 0) + n + (s > 0 ? 1 : 0)) % 3 !== 0) { const px = wx - s * .5, pc = ['#c9524a', '#4f7f96', '#6f9a4f', '#d9a53a', '#8f5f4e'][(k * 2 + (f > 0 ? 1 : 0) + n) % 5]; b.box(px, fy + .55, sz, .34, .5, .3, pc); b.ball(px, fy + .98, sz, .13, .15, .13, '#e3b98f'); b.box(px, fy + .35, sz - f * .28, .32, .14, .3, '#4a4f4c'); if (k % 2) b.box(px, fy + .7, sz - f * .22, .22, .3, .04, '#f1e8d2'); } }
+        }
+      }
+      b.box(wx, fy + wallH - .12, cz, .08, .26, doorW + .2, paint); boxes.push({ x: wx, y: fy + wallH - .12, z: cz, w: .08, h: .26, d: doorW + .2, kind: 'wall', climbable: false }); // lintel
+      b.box(wx + s * .28, fy - .12, cz, .5, .06, doorW + .6, '#2b2622'); boxes.push({ x: wx + s * .28, y: fy - .12, z: cz, w: .5, h: .06, d: doorW + .6, kind: 'step', climbable: false }); // running board
+    }
+    b.box(ex, fy + wallH + .06, cz, 2.3, .03, cl - .4, '#f6ecc8', 0, .6); // ceiling light strip
     b.add(GEO.cylinder, ex, ty + 2.95, cz, 1.45, cl + .1, .45, '#5c6b66', Math.PI / 2);
+    b.box(ex, fy + wallH + .1, cz, 2.6, .12, cl, '#5c6b66'); boxes.push({ x: ex, y: fy + wallH + .1, z: cz, w: 2.6, h: .12, d: cl, kind: 'ceiling', climbable: false });
     b.box(ex, ty + .55, cz - cl / 2 - .4, .3, .3, .8, '#2b2622');
-    boxes.push({ x: ex, y: ty + 1.75, z: cz, w: 2.6, h: 2.6, d: cl }, { x: ex, y: ty + 2.95, z: cz, w: 2.9, h: .9, d: cl + .1 });
+    boxes.push({ x: ex, y: ty + 2.95, z: cz, w: 2.9, h: .9, d: cl + .1, kind: 'car', climbable: true });
   }
   b.box(ex, ty + 1.9, cz - cl / 2 - .5, 2.2, .5, .1, '#c9524a'); // tail lamp board
   return { boxes, length: cz - cl / 2 - .3 - (ez - 3.5), front: ez - 3.9, back: cz - cl / 2 - .5, chimney: { x: ex, y: ty + 3.9, z: ez - 2.3 } };

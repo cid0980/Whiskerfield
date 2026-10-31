@@ -38,9 +38,23 @@ const potGeo = new THREE.CylinderGeometry(1, .72, 1, 9);
 const torusGeo = new THREE.TorusGeometry(1, .12, 5, 16);
 export const GEO = Object.freeze({ box: boxGeo, cylinder: cylinderGeo, tapered: taperedGeo, cone: coneGeo, sphere: sphereGeo, softSphere: softSphereGeo, pot: potGeo, torus: torusGeo });
 
+// The one material every merged chunk uses. A per-vertex `glow` attribute lets lamps, lit windows
+// and signs shine after dark: the `night` uniform (0 by day, 1 at night) scales their emission.
+export const NIGHT = { value: 0 };
+export function makeWorldMaterial() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .98, metalness: 0, flatShading: true });
+  m.onBeforeCompile = shader => {
+    shader.uniforms.uNight = NIGHT;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float glow; varying float vGlow;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = glow;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight; varying float vGlow;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow * (0.15 + 1.6 * uNight);');
+  };
+  m.customProgramCacheKey = () => 'whiskerfield-glow';
+  return m;
+}
 export class Batch {
-  constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.count = 0; this.items = []; }
-  add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0) {
+  constructor() { this.p = []; this.n = []; this.c = []; this.g = []; this.i = []; this.count = 0; this.items = []; }
+  // `glow` (0..1) marks surfaces that shine at night: lamp heads, lit windows, signs.
+  add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0, glow = 0) {
     this.items.push({ geometry, x, y, z, sx, sy, sz, rx, ry, rz });
     tempPosition.set(x, y, z); tempScale.set(sx, sy, sz);
     tempQuaternion.setFromEuler(new THREE.Euler(rx, ry, rz));
@@ -53,14 +67,14 @@ export class Batch {
       this.p.push(tempPosition.x, tempPosition.y, tempPosition.z);
       tempNormal.set(norm.getX(v) / sx, norm.getY(v) / sy, norm.getZ(v) / sz).applyQuaternion(tempQuaternion).normalize();
       this.n.push(tempNormal.x, tempNormal.y, tempNormal.z);
-      this.c.push(tempColor.r, tempColor.g, tempColor.b);
+      this.c.push(tempColor.r, tempColor.g, tempColor.b); this.g.push(glow);
     }
     if (geometry.index) for (let j = 0; j < geometry.index.count; j++) this.i.push(geometry.index.getX(j) + offset);
     else for (let j = 0; j < pos.count; j++) this.i.push(j + offset);
     this.count += pos.count;
     return this;
   }
-  box(x, y, z, w, h, d, color, ry = 0) { return this.add(boxGeo, x, y, z, w, h, d, color, 0, ry); }
+  box(x, y, z, w, h, d, color, ry = 0, glow = 0) { return this.add(boxGeo, x, y, z, w, h, d, color, 0, ry, 0, glow); }
   cyl(x, y, z, r, h, color, rx = 0, rz = 0) { return this.add(cylinderGeo, x, y, z, r, h, r, color, rx, 0, rz); }
   ball(x, y, z, rx, ry, rz, color, soft = false) { return this.add(soft ? softSphereGeo : sphereGeo, x, y, z, rx, ry, rz, color); }
   beam(a, b, radius, color) {
@@ -74,6 +88,7 @@ export class Batch {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    g.setAttribute('glow', new THREE.Float32BufferAttribute(this.g, 1));
     g.setIndex(this.i); g.computeBoundingSphere(); g.computeBoundingBox();
     return g;
   }
@@ -134,7 +149,7 @@ export class World {
     this.scene = scene; this.seedText = seedText; this.country = applyCountry(countryId); this.seed = hashString(countryId === 'whiskerfield' ? seedText : seedText + '~' + countryId);
     this.airports = [];
     this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.spatial = new Map();
-    this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .98, metalness: 0, flatShading: true });
+    this.material = makeWorldMaterial();
     this.center = ''; this.radius = 2; this.pending = [];
   }
 
@@ -160,8 +175,8 @@ export class World {
   }
 
   refreshColliders() {
-    this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.airports = [];
-    for (const c of this.chunks.values()) { this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); this.jobs.push(...c.jobs); this.grounds.push(...c.grounds); this.landmarks.push(...c.landmarks); if (c.airports) this.airports.push(...c.airports); }
+    this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.airports = []; this.lamps = [];
+    for (const c of this.chunks.values()) { this.lamps.push(...c.lamps); this.colliders.push(...c.colliders); this.buildings.push(...c.buildings); this.parks.push(...c.parks); this.water.push(...c.water); this.jobs.push(...c.jobs); this.grounds.push(...c.grounds); this.landmarks.push(...c.landmarks); if (c.airports) this.airports.push(...c.airports); }
     // 8 m spatial hash so physics, NPCs, and the camera only touch nearby solids.
     const index = new Map();
     for (const s of this.colliders) {
@@ -247,7 +262,7 @@ export class World {
 
   createChunk(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
-    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [], lifts: [] };
+    const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [], lifts: [], lamps: [] };
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const grass = country.grass[hash(cx, cz, this.seed, 4) % 4];
     c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
@@ -444,7 +459,7 @@ export class World {
         const wy = f * floorH + 1.65, ww = 1.12 + r() * .32, wh = 1.5 + r() * .24;
         const lit = r() > .82;
         b.box(wx, wy, wz, ww + .24, wh + .23, .16, trim, angle);
-        b.box(wx + nx * .10, wy, wz + nz * .10, ww, wh, .06, lit ? '#dfcf97' : glass, angle);
+        b.box(wx + nx * .10, wy, wz + nz * .10, ww, wh, .06, lit ? '#dfcf97' : glass, angle, lit ? .8 : 0);
         b.box(wx + nx * .15, wy, wz + nz * .15, .065, wh, .06, trim, angle);
         b.box(wx + nx * .15, wy + .05, wz + nz * .15, ww, .065, .06, trim, angle);
         b.box(wx + nx * .13, wy - wh / 2 - .1, wz + nz * .13, ww + .42, .16, .37, '#ded5bb', angle);
@@ -746,7 +761,7 @@ export class World {
     this.cylinderSolid(c,x,0,z,.14,3.83,{climbable:true,kind:'lamp'});
     c.batch.add(taperedGeo,x,1.7,z,.11,3.4,.11,'#667b63');
     c.batch.cyl(x,.15,z,.25,.3,'#78866b');
-    c.batch.box(x,3.5,z,.46,.65,.46,'#eee0ae');
+    c.batch.box(x,3.5,z,.46,.65,.46,'#eee0ae',0,1); c.lamps.push({ x, y: 3.5, z });
     c.batch.add(coneGeo,x,3.94,z,.43,.36,.43,'#657b62');
     for(const sx of [-1,1])for(const sz of [-1,1])c.batch.box(x+sx*.23,3.5,z+sz*.23,.045,.7,.045,'#667b63');
   }

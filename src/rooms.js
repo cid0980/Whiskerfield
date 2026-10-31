@@ -34,7 +34,7 @@ export function hollow(W, c, x, z, w, d, y0, y1, t, door, wall, tag, opening = n
       wallBox(x + nx * (half - t / 2) + tx * gap.u, z + nz * (half - t / 2) + tz * gap.u, side % 2 ? t : gap.width + .1, side % 2 ? gap.width + .1 : t, (y0 + gap.height + y1) / 2, y1 - y0 - gap.height);
     }
   }
-  return { minX: x - w / 2 + t, maxX: x + w / 2 - t, minZ: z - d / 2 + t, maxZ: z + d / 2 - t };
+  return { minX: x - w / 2 + t, maxX: x + w / 2 - t, minZ: z - d / 2 + t, maxZ: z + d / 2 - t, door: door ? { ...door } : null, at: { x, z, w, d, t } };
 }
 
 // Door jambs, header, an open door leaf swung inward, and a mat.
@@ -43,8 +43,9 @@ export function doorway(W, c, x, z, side, u, width, height, trim, leaf) {
   const dx = x + tx * u, dz = z + tz * u;
   for (const s of [-1, 1]) b.box(dx + tx * s * (width / 2 + .07), height / 2, dz + tz * s * (width / 2 + .07), side % 2 ? .22 : .14, height, side % 2 ? .14 : .22, trim);
   b.box(dx, height + .07, dz, side % 2 ? .22 : width + .3, .14, side % 2 ? width + .3 : .22, trim);
-  // Leaf standing open against the inside wall.
-  b.box(dx - nx * (width / 2 + .3) + tx * (width / 2 - .02), height / 2 - .05, dz - nz * (width / 2 + .3) + tz * (width / 2 - .02), side % 2 ? width - .1 : .06, height - .1, side % 2 ? .06 : width - .1, leaf);
+  // Leaf swung right back against the inside wall, beside the opening — flat to the wall, so it does
+  // not stand in the doorway and half block it.
+  b.box(dx - nx * .12 + tx * (width / 2 + (width - .1) / 2 + .06), height / 2 - .05, dz - nz * .12 + tz * (width / 2 + (width - .1) / 2 + .06), side % 2 ? width - .1 : .06, height - .1, side % 2 ? .06 : width - .1, leaf);
   b.box(dx - nx * .5, .45, dz - nz * .5, side % 2 ? .6 : 1.1, .03, side % 2 ? 1.1 : .6, '#8f5f4e');
 }
 
@@ -278,6 +279,54 @@ KITS.cafe = function (W, c, room, fy, r) {
   b.box(room.minX + w / 2, fy + 1.9, room.minZ + .05, 3, .9, .05, '#2f3331'); for (let k = 0; k < 5; k++) b.box(room.minX + w / 2 - 1.2 + k * .6, fy + 1.9, room.minZ + .09, .4, .05, .02, '#f1e8d2'); // menu board
 };
 
+// The apron in front of a door, in the room's floor plane: a strip the width of the doorway plus a
+// step either side, reaching `deep` metres into the room.
+export function doorAprons(room, deep = 1.9) {
+  const out = [];
+  const add = (frame, gap, fy = 0) => {
+    if (!gap || !frame) return;
+    const a = gap.side * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)), tx = nz, tz = -nx;
+    const half = gap.side % 2 ? frame.w / 2 : frame.d / 2;
+    const d2 = deep / 2, cx = frame.x + nx * (half - frame.t - d2) + tx * gap.u, cz = frame.z + nz * (half - frame.t - d2) + tz * gap.u;
+    const hw = Math.abs(tx) * (gap.width / 2 + .45) + Math.abs(nx) * d2, hd = Math.abs(tz) * (gap.width / 2 + .45) + Math.abs(nz) * d2;
+    out.push({ minX: cx - hw, maxX: cx + hw, minZ: cz - hd, maxZ: cz + hd });
+  };
+  add(room.at, room.door);
+  for (const extra of room.extraDoors || []) add(room.at, extra);
+  return out;
+}
+
+// A doorway stays clear. Kits furnish a room knowing nothing about where the door is, so whatever
+// they put in the apron in front of a door — or in the gap in the partition — is dropped from both
+// the mesh and the collision set. Crude, but a doorway you cannot walk through is worse than a bare
+// corner, and it works for every kit without touching any of them.
+export function apronShim(W, c, rects, fy) {
+  if (!rects || !rects.length) return [W, c];
+  const hit = (x, z, w, d, y0, y1) => y1 > fy + .06 && y0 < fy + 1.85 && rects.some(k => x + w / 2 > k.minX && x - w / 2 < k.maxX && z + d / 2 > k.minZ && z - d / 2 < k.maxZ);
+  const batch = Object.create(c.batch);
+  const real = c.batch;
+  batch.box = (x, y, z, w, h, d, ...rest) => hit(x, z, w, d, y - h / 2, y + h / 2) ? undefined : real.box(x, y, z, w, h, d, ...rest);
+  batch.add = (geo, x, y, z, sx = 1, sy = 1, sz = 1, ...rest) => hit(x, z, sx, sz, y - sy / 2, y + sy / 2) ? undefined : real.add(geo, x, y, z, sx, sy, sz, ...rest);
+  batch.cyl = (x, y, z, r, h, color, ...rest) => hit(x, z, r * 2, r * 2, y - h / 2, y + h / 2) ? undefined : real.cyl(x, y, z, r, h, color, ...rest);
+  batch.ball = (x, y, z, rx, ry, rz, ...rest) => hit(x, z, rx * 2, rz * 2, y - ry, y + ry) ? undefined : real.ball(x, y, z, rx, ry, rz, ...rest);
+  const world = {};
+  for (const k of Object.getOwnPropertyNames(Object.getPrototypeOf(W))) { const v = W[k]; if (typeof v === 'function') world[k] = v.bind(W); }
+  const wrap = (name, fn) => { world[name] = fn; };
+  wrap('solid', (cc, x, y, z, w, h, d, o) => hit(x, z, w, d, y - h / 2, y + h / 2) ? undefined : W.solid(cc, x, y, z, w, h, d, o));
+  wrap('cylinderSolid', (cc, x, y, z, r, h, o) => hit(x, z, r * 2, r * 2, y, y + h) ? undefined : W.cylinderSolid(cc, x, y, z, r, h, o));
+  wrap('ellipsoidSolid', (cc, x, y, z, rx, ry, rz, o) => hit(x, z, rx * 2, rz * 2, y - ry, y + ry) ? undefined : W.ellipsoidSolid(cc, x, y, z, rx, ry, rz, o));
+  wrap('crate', (cc, x, y, z, s, o) => hit(x, z, s, s, y - s / 2, y + s / 2) ? undefined : W.crate(cc, x, y, z, s, o));
+  const cf = Object.create(c); cf.batch = batch;
+  return [world, cf];
+}
+
+// Furnish one room, keeping its doorways clear.
+export function furnishKit(W, c, kitchen, room, fy, r, side, extra = []) {
+  const rects = [...doorAprons(room), ...extra];
+  const [W2, c2] = apronShim(W, c, rects, fy);
+  return KITS[kitchen](W2, c2, room, fy, r, side);
+}
+
 export const HOUSE_KITS = ['living', 'kitchen', 'bedroom', 'study', 'workshop', 'nursery', 'atelier'];
 export const PLACE_NAMES = { office: 'an office', gym: 'a gym', cafe: 'a café', living: 'a sitting room', kitchen: 'a kitchen', bedroom: 'a bedroom', study: 'a study', workshop: 'a workshop', bakery: 'the bakery', nursery: 'a nursery', atelier: 'a painter’s studio' };
 
@@ -289,6 +338,18 @@ export function furnishHouse(W, c, inside, fy, ceil, r, doorSide, doorU, wallCol
   let split;
   if (alongX) { split = inside.minX + w * (.45 + r() * .1); if (doorSide === 1) split = Math.min(split, inside.maxX - 5.5); if (doorSide === 3) split = Math.max(split, inside.minX + 5.5); }
   else { split = inside.minZ + d * (.45 + r() * .1); if (doorSide === 0) split = Math.min(split, inside.maxZ - 5.5); if (doorSide === 2) split = Math.max(split, inside.minZ + 5.5); }
+  // A partition that runs into the front wall must not end in the doorway: slide it along its axis
+  // until it clears the opening, so walking in never means walking into the edge of a wall.
+  const doorAxis = (alongX && (doorSide === 0 || doorSide === 2)) || (!alongX && (doorSide === 1 || doorSide === 3));
+  if (doorAxis) {
+    // The door's own coordinate along the partition's axis (the tangent of the door side flips sign
+    // with the side, so this cannot just be the centre plus doorU).
+    const da = doorSide * Math.PI / 2, dnx = Math.round(Math.sin(da)), dtx = Math.round(Math.cos(da)), dtz = -dnx;
+    const doorPos = alongX ? (inside.minX + inside.maxX) / 2 + dtx * doorU : (inside.minZ + inside.maxZ) / 2 + dtz * doorU, need = 1.5 / 2 + .85;
+    if (Math.abs(split - doorPos) < need) split = doorPos + (split >= doorPos ? need : -need);
+    const lo2 = (alongX ? inside.minX : inside.minZ) + 5.5, hi2 = (alongX ? inside.maxX : inside.maxZ) - 5.5;
+    split = Math.min(hi2, Math.max(lo2, split));
+  }
   const gapAt = alongX ? inside.minZ + d * (.3 + r() * .4) : inside.minX + w * (.3 + r() * .4), t = .22, hh = ceil - fy;
   const partWall = (u0, u1, yy = fy + hh / 2, h = hh) => {
     const um = (u0 + u1) / 2, len = u1 - u0; if (len < .05) return;
@@ -302,12 +363,14 @@ export function furnishHouse(W, c, inside, fy, ceil, r, doorSide, doorU, wallCol
   // The room the front door opens into is index 0 (kits[0]); figure out which half that is.
   const doorRoom = alongX ? (doorSide === 1 ? 1 : doorSide === 3 ? 0 : (doorU + (inside.minX + inside.maxX) / 2 > split ? 1 : 0)) : (doorSide === 0 ? 1 : doorSide === 2 ? 0 : (doorU + (inside.minZ + inside.maxZ) / 2 > split ? 1 : 0));
   const names = [];
+  // The opening through the partition, as a rectangle the kits must not block.
+  const gapRect = alongX ? { minX: split - 1.1, maxX: split + 1.1, minZ: gapAt - 1.5, maxZ: gapAt + 1.5 } : { minX: gapAt - 1.5, maxX: gapAt + 1.5, minZ: split - 1.1, maxZ: split + 1.1 };
   rooms.forEach((room, i) => {
     const kit = kits[i === doorRoom ? 0 : 1];
     // Treat the partition as "the door side" for the inner room so furniture lines the far wall.
     let side = i === doorRoom ? doorSide : (alongX ? (i === 0 ? 1 : 3) : (i === 0 ? 0 : 2));
     // Keep bulky pieces clear of the doorway itself if it faces straight in.
-    KITS[kit](W, c, room, fy, r, side);
+    furnishKit(W, c, kit, room, fy, r, side, [gapRect]);
     names.push({ kit, room });
   });
   return names;

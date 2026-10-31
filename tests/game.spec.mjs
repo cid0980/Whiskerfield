@@ -815,6 +815,61 @@ test('towns stream in a slice at a time, and the camera holds still in a tight c
   expect(r.maxSwing).toBeLessThan(.25);
 });
 
+test('front doors are clear of furniture, and the tower stairs are real stairs', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {};
+    g.teleport(0, 1, 0);
+    // ---- every front door: nothing standing in the apron inside it
+    const blds = [...g.world.chunks.values()].flatMap(c => c.buildings).filter(b => b.door && !b.parent);
+    const blocked = [];
+    for (const bd of blds) {
+      const t = .32, a = bd.door.side * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)), tx = nz, tz = -nx;
+      const half = bd.door.side % 2 ? bd.w / 2 : bd.d / 2, deep = 1.6, fy = .42;
+      const cx = bd.x + nx * (half - t - deep / 2) + tx * bd.door.u, cz = bd.z + nz * (half - t - deep / 2) + tz * bd.door.u;
+      const hw = Math.abs(tx) * (bd.door.width / 2 + .1) + Math.abs(nx) * deep / 2, hd = Math.abs(tz) * (bd.door.width / 2 + .1) + Math.abs(nz) * deep / 2;
+      const hit = g.world.colliders.find(s => !['floor', 'ceiling', 'roof', 'step'].includes(s.kind)
+        && s.maxY > fy + .14 && s.minY < fy + 1.7
+        && s.maxX > cx - hw + .03 && s.minX < cx + hw - .03 && s.maxZ > cz - hd + .03 && s.minZ < cz + hd - .03);
+      if (hit) blocked.push([Math.round(bd.x), Math.round(bd.z), hit.kind]);
+    }
+    out.doors = { checked: blds.length, blocked };
+    // ---- and the rooms are still furnished
+    const house = blds.find(b => b.kind === 'house') || blds[0];
+    const hx = (s) => (s.minX + s.maxX) / 2, hz = (s) => (s.minZ + s.maxZ) / 2;
+    out.furniture = g.world.colliders.filter(s => !['wall', 'floor', 'ceiling', 'roof', 'step'].includes(s.kind)
+      && hz(s) > house.z - house.d / 2 + .4 && hz(s) < house.z + house.d / 2 - .4 && hx(s) > house.x - house.w / 2 + .4 && hx(s) < house.x + house.w / 2 - .4).length;
+    // ---- up the tower stairs, lobby to the first floor
+    const tw = [...g.world.landmarks].find(l => l.kind === 'tower' && l.radius === 9);
+    const bd = g.world.buildings.find(b => b.id === tw.id), t2 = .3;
+    const innerMinX = bd.x - bd.w / 2 + t2, stairX0 = innerMinX + .05, landing = 1.7, runX0 = stairX0 + landing;
+    const lane = 1.45, stairZ0 = bd.z - bd.d / 2 + t2 + .05;
+    g.teleport(runX0 - .8, .6, stairZ0 + lane / 2); for (let i = 0; i < 30; i++) g.step(1 / 60);
+    const y0 = g.player.pos.y, ys = [];
+    g.setCamera(-Math.PI / 2, -.15, 3); g.hold.y = -1;
+    let scrambled = 0, frames = 0;
+    for (let i = 0; i < 300; i++) {
+      g.step(1 / 60);
+      if (g.player.climbing) scrambled++;
+      if (g.player.pos.y > y0 + .05) frames++;
+      if (i % 10 === 0) ys.push(+g.player.pos.y.toFixed(2));
+    }
+    g.hold.y = 0; for (let i = 0; i < 30; i++) g.step(1 / 60);
+    // Up the flight step by step: rising, never dropping, and never a scramble up a wall.
+    let drops = 0; for (let i = 1; i < ys.length; i++) if (ys[i] < ys[i - 1] - .02) drops++;
+    out.stairs = { y0: +y0.toFixed(2), top: +g.player.pos.y.toFixed(2), scrambled, drops, ys };
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.doors.checked).toBeGreaterThan(10);
+  expect(r.doors.blocked).toEqual([]);
+  expect(r.furniture).toBeGreaterThan(4);
+  expect(r.stairs.y0).toBeLessThan(1);
+  expect(r.stairs.top).toBeGreaterThan(3.2);
+  expect(r.stairs.scrambled, JSON.stringify(r.stairs)).toBe(0);
+  expect(r.stairs.drops, JSON.stringify(r.stairs)).toBe(0);
+});
+
 test('the cat swims out of the lake and walks onto the train at a door', async ({ page }) => {
   const errors = await enter(page);
   const r = await page.evaluate(() => {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO } from './world.js';
-import { hollow, doorway, KITS, PLACE_NAMES, person as roomPerson } from './rooms.js';
+import { hollow, doorway, KITS, PLACE_NAMES, apronShim, person as roomPerson } from './rooms.js';
 
 // Landmark lots. Each function fills one 24 x 24 m lot centred on (x, z) in chunk `c`.
 // They draw with c.batch (merged static geometry), register colliders through the World helpers,
@@ -24,6 +24,23 @@ export function ramp(W, c, x1, y1, z1, x2, y2, z2, width, thick, color) {
     c.batch.add(GEO.box, p.x, p.y, p.z, width, thick, len / n + .02, color, e.x, e.y, e.z);
   }
 }
+// A real flight of stairs: flat treads with risers under a quarter of a metre, each its own solid, so
+// the cat walks up instead of catching on the jagged boxes a tilted ramp leaves behind.
+export function stairs(W, c, x0, y0, x1, y1, z, width, color = '#8d8470', edge = '#a39c88') {
+  const b = c.batch, rise = y1 - y0, run = x1 - x0, n = Math.max(2, Math.ceil(Math.abs(rise) / .21));
+  const stepRise = rise / n, stepRun = run / n, dir = Math.sign(run) || 1;
+  // Solid treads standing on the floor, each its own box. A tilted stringer under the flight would be
+  // given one huge bounding-box collider by the auto-collider pass — an invisible ramp the cat then
+  // tries to scramble up — so the flight is drawn as upright boxes only.
+  for (let i = 0; i < n; i++) {
+    const top = y0 + stepRise * (i + 1), cx = x0 + stepRun * (i + .5), h = Math.abs(stepRise);
+    b.box(cx, top - h / 2, z, Math.abs(stepRun) + .01, h, width, color);
+    b.box(cx - dir * (stepRun / 2 - .02), top - .012, z, .035, .024, width + .02, edge); // nosing
+    W.solid(c, cx, top - h / 2, z, Math.abs(stepRun) + .01, h, width, { kind: 'step', climbable: false });
+  }
+  return { n, stepRise, stepRun };
+}
+
 export function ladder(W, c, x, z, y0, y1, facing, color = '#8d8470') {
   const nx = Math.sin(facing), nz = Math.cos(facing), tx = nz, tz = -nx;
   for (const s of [-1, 1]) c.batch.box(x + tx * s * .22, (y0 + y1) / 2, z + tz * s * .22, .06 + Math.abs(tx) * .0, y1 - y0, .06, color, facing);
@@ -180,12 +197,15 @@ export function makeTower(W, c, x, z, r, id, tall = 1) {
     const y = levels[k], below = levels[k - 1];
     // Holes: the shaft, and the top of the stair that arrives at this level (so a cat on the stair has headroom).
     const arrivesRight = (k - 1) % 2 === 0, laneZ = stairZ0 + ((k - 1) % 2) * lane; // stair k-1 -> k uses lane (k-1)%2, rising to the right on even k-1
-    const holeStair = arrivesRight ? { minX: runX1 - 1.9, maxX: runX1 + .05, minZ: laneZ, maxZ: laneZ + lane } : { minX: runX0 - .05, maxX: runX0 + 1.9, minZ: laneZ, maxZ: laneZ + lane };
+    // The well over the top of the flight has to reach back far enough that a climbing cat's head is
+    // under the opening, not under the slab: a little over three metres of run, not two.
+    const holeStair = arrivesRight ? { minX: runX1 - 3.1, maxX: runX1 + .05, minZ: laneZ, maxZ: laneZ + lane } : { minX: runX0 - .05, maxX: runX0 + 3.1, minZ: laneZ, maxZ: laneZ + lane };
     slabWithHoles(W, c, inner, y - .08, .16, [shaft, holeStair], slabColor, { kind: 'floor', climbable: false, buildingId: id });
     // The stair from the level below up to here.
     const x0 = arrivesRight ? runX0 : runX1, x1 = arrivesRight ? runX1 : runX0;
-    ramp(W, c, x0, below + .02, laneZ + lane / 2, x1, y + .02, laneZ + lane / 2, lane - .1, .14, '#8d8470');
+    stairs(W, c, x0, below + .02, x1, y + .02, laneZ + lane / 2, lane - .1, '#8d8470');
     b.box(arrivesRight ? stairX0 + landing / 2 : stairX1 - landing / 2, below - .03, laneZ + lane / 2, landing, .06, lane, '#a39c88'); // landing at the foot
+    W.solid(c, arrivesRight ? stairX0 + landing / 2 : stairX1 - landing / 2, below - .03, laneZ + lane / 2, landing, .06, lane, { kind: 'floor', climbable: false, buildingId: id });
     // Handrail on the open side of the stair strip (a tilted rod: no collider).
     const rz = stairZ0 + lane * 2 + .05; b.add(GEO.box, (x0 + x1) / 2, (below + y) / 2 + .95, rz, Math.abs(x1 - x0) + .4, .06, .05, '#4a4f4c', 0, 0, Math.atan2(y - below, x1 - x0));
     for (let k2 = 0; k2 <= 3; k2++) { const px = x0 + (x1 - x0) * k2 / 3, py = below + (y - below) * k2 / 3; b.box(px, py + .5, rz, .05, 1, .05, '#4a4f4c'); }
@@ -300,10 +320,15 @@ export function makePlayground(W, c, x, z, r, id) {
 // ---- buildings you can walk into -------------------------------------------------------------
 
 export function makeInterior(W, c, x, z, r, id, kind) {
-  const b = c.batch, w = kind === 'home' ? 10 : 12, d = kind === 'home' ? 8 : 9, h = 3.6, t = .3;
+  const w = kind === 'home' ? 10 : 12, d = kind === 'home' ? 8 : 9, h = 3.6, t = .3, door = 1.6, front = z + d / 2, fy = .36; // .36 is the floor top
+  // Furniture stays out of the doorway: anything dropped in the apron inside the front door is dropped
+  // from both the mesh and the collision set, so the shop, café and living room can always be entered.
+  const shimmed = apronShim(W, c, [{ minX: x - door / 2 - .45, maxX: x + door / 2 + .45, minZ: front - t - 2, maxZ: front - t }], fy);
+  W = shimmed[0]; c = shimmed[1];
+  const b = c.batch;
   const wall = kind === 'cafe' ? pick(r, ['#d9b48c', '#c9a684', '#d6c1a0']) : kind === 'shop' ? pick(r, ['#9fb3a6', '#b7bfae', '#cbb9a4']) : pick(r, ['#d8cbb2', '#c4b49a', '#d2c1a4']);
   const floorColor = kind === 'cafe' ? '#a7805b' : kind === 'shop' ? '#cfc8b4' : '#b89a70', roofColor = pick(r, ['#8a5a44', '#96604a', '#5c6b66', '#6f6252']);
-  const front = z + d / 2, door = 1.6, inside = { minX: x - w / 2 + t, maxX: x + w / 2 - t, minZ: z - d / 2 + t, maxZ: front - t };
+  const inside = { minX: x - w / 2 + t, maxX: x + w / 2 - t, minZ: z - d / 2 + t, maxZ: front - t };
   // Plinth, floor and ceiling (which doubles as the roof deck).
   b.box(x, .1, z, w + .5, .2, d + .5, '#b8b6a0'); b.box(x, .3, z, w - .2, .12, d - .2, floorColor);
   b.box(x, .1, front + .35, door + .8, .2, .9, '#b8b6a0'); W.solid(c, x, .1, front + .35, door + .8, .2, .9, { climbable: false, kind: 'step' });
@@ -319,13 +344,13 @@ export function makeInterior(W, c, x, z, r, id, kind) {
   // Front windows either side of the door, with sills.
   for (const s of [-1, 1]) { const wx = x + s * (door / 2 + sideW / 2); b.box(wx, 1.85, front + .02, sideW - 1.2, 1.7, .08, '#a9c3c9'); b.box(wx, 1.85, front + .05, sideW - 1.1, 1.8, .04, '#f1e8d2'); b.box(wx, .95, front + .1, sideW - 1, .14, .36, '#ded5bb'); W.solid(c, wx, .95, front + .1, sideW - 1, .14, .36, { climbable: false, kind: 'sill' }); }
   const building = { id, x, z, w, d, h: h + .25, roofType: 0, roofRise: 2.2, ridgeX: true, wall, roofColor, cx: c.cx, cz: c.cz, kind: 'roof', body: null, interior: kind };
+  building.door = { side: 0, u: 0, width: door };
   c.buildings.push(building);
   c.colliders.push({ shape: 'roof', building, kind: 'roof', climbable: false, minX: x - w / 2 - .55, maxX: x + w / 2 + .55, minY: h + .25, maxY: h + .25 + 2.2, minZ: z - d / 2 - .55, maxZ: z + d / 2 + .55 });
   b.box(x, h + .25, z, w + .38, .25, d + .38, '#e8dfc4');
   W.gable(c, { ...building, h: h + .25 }, 2.2, roofColor, true);
   paving(c, x, z, w, d, .36);
   c.landmarks.push({ id, kind, x, z, radius: Math.min(w, d) / 2 - .6, name: kind === 'cafe' ? 'the corner café' : kind === 'shop' ? 'the little grocer' : 'somebody’s living room', inside, y: .36 });
-  const fy = .36; // floor top
   if (kind === 'cafe') {
     // Counter with an espresso machine and cake stand, shelves of jars, round tables and chairs, a cat bed.
     const kx = x - w / 2 + 2.2, kz = z - d / 2 + 2.6;

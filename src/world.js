@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments, makeRailway, makeAirport, railTrack } from './places.js';
 import { makeLake, makeCoast, makeSea, makeBalloonField } from './shore.js';
-import { hollow, doorway, furnishHouse, FLOORS, PLACE_NAMES, KITS } from './rooms.js';
+import { hollow, doorway, furnishHouse, furnishKit, FLOORS, PLACE_NAMES, KITS } from './rooms.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -514,6 +514,7 @@ export class World {
     c.buildings.push(building);
     const doorSide = special >= 0 ? (special === 2 ? 1 : 0) : Math.floor(r() * 4);
     const doorU = (r() - .5) * w * .28, doorW = 1.5, doorH = 2.3;
+    building.door = { side: doorSide, u: doorU, width: doorW };
     // The ground floor is a real room: four walls round a doorway, a floor, and the upper
     // storeys as one block above it (its underside is the ceiling).
     const fy = .42, t = .32;
@@ -684,8 +685,8 @@ export class World {
     c.colliders.push({ shape: 'roof', building: sub, kind: 'roof', climbable: false, minX: cxw - ww / 2 - .55, maxX: cxw + ww / 2 + .55, minY: h, maxY: h + 1.7, minZ: czw - wd / 2 - .55, maxZ: czw + wd / 2 + .55 });
     this.gable(c, sub, 1.7, roofColor, sub.ridgeX);
     const kit = ['study', 'bedroom', 'workshop', 'nursery'][Math.floor(r() * 4)];
-    KITS[kit](this, c, room, fy, r, facing);
-    sub.kit = kit;
+    furnishKit(this, c, kit, room, fy, r, facing);
+    sub.kit = kit; sub.door = { side: facing, u: 0, width: 1.9 };
     c.landmarks.push({ id: id + ':w', kind: 'house', x: cxw, z: czw, radius: 2.5, name: `${PLACE_NAMES[kit]} in the wing`, inside: room, y: fy, kits: [kit] });
     // One window on each free side.
     for (const sd of [0, 1, 2, 3]) {

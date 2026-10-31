@@ -914,6 +914,47 @@ test('the cat swims out of the lake and walks onto the train at a door', async (
   expect(Math.abs(r.aisle.rode)).toBeGreaterThan(3);
 });
 
+test('seated people sit on their seat, and turn to watch the cat go by', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {};
+    g.teleport(0, 1, 0); for (let i = 0; i < 60; i++) g.step(1 / 60);
+    // ---- everyone sitting down rests on the thing under them, give or take a centimetre
+    const sitters = g.people.list.filter(p => p.sitting);
+    out.sitters = sitters.length;
+    out.worst = 0; out.worstAt = null;
+    for (const p of sitters) {
+      const seat = g.physics.support(p.x, p.z, p.y + .95).y;
+      const hip = p.y + p.body.position.y + p.look.legH;
+      const gap = Math.abs(hip - seat);
+      if (gap > out.worst) { out.worst = +gap.toFixed(2); out.worstAt = [p.d.role, +hip.toFixed(2), +seat.toFixed(2)]; }
+    }
+    // ---- a seated person looks round at the cat, even though they stay put
+    const s = sitters[0];
+    if (s) {
+      const before = s.heading;
+      const a = Math.random() * 6.28;
+      g.teleport(s.x + Math.sin(a) * 1.4, s.y + .2, s.z + Math.cos(a) * 1.4);
+      for (let i = 0; i < 90; i++) g.step(1 / 60);
+      out.seatedTurn = { turned: +Math.abs(Math.atan2(Math.sin(s.heading - before), Math.cos(s.heading - before))).toFixed(2), stillSeated: s.sitting };
+    }
+    // ---- and a walker greets the cat from a step away
+    const w = g.people.list.find(p => !p.job && !p.sitting) || g.people.list[0];
+    const g0 = g.people.greetings;
+    g.teleport(w.x + 1.1, .2, w.z);
+    for (let i = 0; i < 120; i++) { g.step(1 / 60); g.teleport(w.x + 1.1, .2, w.z); }
+    out.greet = { gained: g.people.greetings - g0, state: w.state, line: w.line.length };
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.sitters).toBeGreaterThan(2);
+  expect(r.worst, JSON.stringify(r.worstAt)).toBeLessThan(.06);
+  expect(r.seatedTurn.stillSeated).toBe(true);
+  expect(r.seatedTurn.turned).toBeGreaterThan(.15);
+  expect(r.greet.gained).toBeGreaterThanOrEqual(1);
+  expect(r.greet.line).toBeGreaterThan(4);
+});
+
 test('the cabin is walkable, and the plane leaves and lands without going through a roof', async ({ page }) => {
   const errors = await enter(page);
   const r = await page.evaluate(() => {

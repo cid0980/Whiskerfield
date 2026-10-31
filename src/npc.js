@@ -93,7 +93,9 @@ function buildLook(d) {
   // Body: shoulders, chest, a skirt or hips.
   torso.add(box, 0, torsoH / 2, 0, shoulder, torsoH, depth, d.shirt);
   torso.add(ball, 0, torsoH * .97, 0, shoulder * .55, torsoH * .12, depth * .6, d.shirt);
-  if (d.skirt) torso.add(skirtGeo, 0, -legH * .25, 0, shoulder * .62, legH * .55, depth * 1.3, d.trousers);
+  // Short enough that a seated person's thighs are not inside it: a knee-length skirt on a box body
+  // reads as legs through cloth the moment they sit down.
+  if (d.skirt) torso.add(skirtGeo, 0, -legH * .17, 0, shoulder * .62, legH * .4, depth * 1.3, d.trousers);
   else torso.add(box, 0, -.02, 0, shoulder * .96, .08, depth, d.trousers);
   if (d.apron) { torso.add(box, 0, torsoH * .42, depth / 2 + .01, shoulder * .78, torsoH * .95, .02, d.apron); torso.add(box, 0, -legH * .2, depth / 2 + .01, shoulder * .82, legH * .45, .02, d.apron); torso.add(box, 0, torsoH * .95, 0, .03, torsoH * .15, depth + .04, d.apron); }
   if (d.vest) { torso.add(box, 0, torsoH * .5, 0, shoulder + .04, torsoH * .8, depth + .04, '#f2c21b'); torso.add(box, 0, torsoH * .5, 0, shoulder + .05, .06, depth + .05, '#cfd3d2'); torso.add(box, 0, torsoH * .28, 0, shoulder + .05, .06, depth + .05, '#cfd3d2'); }
@@ -203,18 +205,18 @@ class Person {
     this.lineTimer -= dt; if (this.lineTimer <= 0) this.line = '';
     const dx = cat.x - this.x, dz = cat.z - this.z, catDistance = Math.hypot(dx, dz), catLevel = Math.abs(cat.y - this.y) < 1.6;
     // A cat strolling up gets a fuss; a cat sprinting past gets a startled laugh.
-    if (people.interactive && this.state !== 'greet' && this.state !== 'chat' && catDistance < 2.3 && catLevel && this.cooldown === 0) {
+    if (people.interactive && this.state !== 'greet' && this.state !== 'chat' && catDistance < 1.9 && catLevel && this.cooldown === 0) {
       this.state = 'greet'; this.timer = 3 + Math.random() * 1.8; this.speed = 0; this.greeted++;
       this.say(this.greetLine(catSpeed), 3.4);
       this.heartTime = 1.6; people.greetings++; people.onGreet?.(this);
     }
     let moving = false;
     if (this.state === 'greet') {
-      if (!this.sitting) this.face(Math.atan2(dx, dz), dt, 6);
+      this.face(Math.atan2(dx, dz), dt, this.sitting ? 1.6 : 6);
       if (this.timer === 0 || catDistance > 5) { this.state = this.job ? 'work' : 'walk'; this.cooldown = 9 + Math.random() * 14; }
     } else if (this.state === 'work') {
       // Working folk stay put, glance at a nearby cat, and call their wares now and then.
-      if (!this.sitting && catDistance < 6 && catLevel) this.face(Math.atan2(dx, dz), dt, 2); else if (!this.sitting) this.face(this.job.heading, dt, 2);
+      if (catDistance < 6 && catLevel) this.face(Math.atan2(dx, dz), dt, this.sitting ? 1.2 : 2); else if (!this.sitting) this.face(this.job.heading, dt, 2);
       if (Math.random() < dt * .05 && catDistance < 22) this.say(this.idleLine(), 2.6);
     } else if (this.state === 'chat') {
       if (this.partner) this.face(Math.atan2(this.partner.x - this.x, this.partner.z - this.z), dt, 5);
@@ -251,6 +253,12 @@ class Person {
       }
     }
     if (!this.job) { const ground = people.physics.support(this.x, this.z, this.y + .35).y; this.y += (ground - this.y) * (1 - Math.exp(-14 * dt)); }
+    // How high the thing they are sitting on actually is: a café chair, an office chair, a bench. The
+    // old pose dropped the body by a constant, so anyone on a 0.45 m seat floated a foot above it.
+    if (this.sitting) {
+      const seat = people.physics.support(this.x, this.z, this.y + .95).y;
+      this.seatAbove = Number.isFinite(seat) && seat > this.y - .06 ? seat - this.y : .45;
+    } else this.seatAbove = .45;
     this.animate(dt, moving);
     const s = this.solid; s.x = this.x; s.z = this.z; s.minX = this.x - s.r; s.maxX = this.x + s.r; s.minZ = this.z - s.r; s.maxZ = this.z + s.r; s.minY = this.y; s.maxY = this.y + this.H;
   }
@@ -283,7 +291,7 @@ class Person {
     this.legs[0].rotation.x += this.reach * .18 * (1 - this.sit); this.legs[1].rotation.x += -this.reach * .12 * (1 - this.sit);
     // Sitting: thighs forward, shins down, body lowered onto the seat.
     for (const leg of this.legs) leg.rotation.x += -Math.PI / 2 * this.sit; for (const shin of this.shins) shin.rotation.x += Math.PI / 2 * this.sit;
-    this.body.position.y = (moving ? Math.abs(Math.sin(this.phase)) * .03 : Math.sin(t * 1.3 + this.phase) * .006) - this.reach * .14 * (1 - this.sit) - this.sit * (this.look.legH * .52 - .44);
+    this.body.position.y = (moving ? Math.abs(Math.sin(this.phase)) * .03 : Math.sin(t * 1.3 + this.phase) * .006) - this.reach * .14 * (1 - this.sit) - this.sit * Math.max(0, this.look.legH - (this.seatAbove ?? .45));
     if (this.sitting) { this.arms[0].rotation.x = -.9 + Math.sin(t * 1.2 + this.gesture) * .08; this.arms[1].rotation.x = -.9; }
     this.body.rotation.z = moving ? Math.sin(this.phase) * .03 : Math.sin(t * .9 + this.phase) * .012;
     this.group.position.set(this.x, this.y, this.z); this.group.rotation.y = this.heading;

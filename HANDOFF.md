@@ -230,18 +230,14 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    so the cat can step up on a seat instead of bumping it. Measured: 11 m of cabin walked in two
    seconds. **Pitfall:** when editing those one-line loops, keep the closing braces — a missing `}`
    shifts every const out of scope and the whole page dies with "sz is not defined".
-10. **People: bodies/clothes don't fit, floating when seated, interactions broken. [pair E]**
-    `npc.js` builds a person from boxes; shirt/trousers scale with `build`/`height` but the head/limbs don't
-    follow, and the sitting pose offsets `y` by a constant instead of the bench top. Plan: derive all
-    parts from one `height` scale; for sitting, use `physics.support()` at the bench and set hip height to
-    the bench top; make `greet` trigger when the cat is within 1.8 m and visible, with the person turning
-    to face it; re-check the "neighbours wander freely" test.
-11. **[DONE in 1.7.2]** Balloon/boat ride view "stuck, lagging, fixed": fixed with item 2 (the ride is
-    followed rigidly). Re-verify from the balloon/boat scenes in `scripts/cam.tmp.mjs` if the carry code
-    changes.
-
-When all of the above are done, bump to 1.8.0 with a changelog entry summarising "camera, movement and
-interiors overhaul".
+10. **[DONE in 1.7.8, pair E]** People. (1) Floating when seated: the pose dropped the body by a
+    constant (`legH*.52 - .44`), which on a .45 m café chair left the hips a third of a metre above the
+    seat. `update()` now measures the seat under them (`physics.support(x, z, y+.95)`, cached as
+    `seatAbove`) and `animate()` lowers the hips to it: measured gap 0.00–0.02 m on every sitter.
+    (2) A seated person now turns to watch the cat (slowly, 1.2–1.6 rad/s) instead of being locked to
+    their job heading, and the greet radius is 1.9 m. (3) Skirts were knee length on a box body, so
+    sitting put the thighs *inside* the cloth; the skirt is mid-thigh now. Everyone's parts are derived
+    from one `height` and one `build`, so a kid's smaller frame keeps smaller clothes.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 

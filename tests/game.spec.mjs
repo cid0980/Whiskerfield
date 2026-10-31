@@ -20,6 +20,7 @@ async function enter(page, path = '/?test=1&seed=moss-424') {
 const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
 test('wander, jump, climb, discover, map, rest, and resume offline', async ({ page, context }) => {
+  test.setTimeout(240000); // a wall climb plus a screenshot under software WebGL needs the room
   const errors = await enter(page);
   await page.waitForFunction(() => window.__whiskerfield.getState().offlineReady);
 

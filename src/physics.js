@@ -331,7 +331,18 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
     p.heading = dampAngle(p.heading, Math.atan2(-wall.nx, -wall.nz), 20, dt);
     const climbTo = physics.ceiling(p.pos.y, p.pos.y + CAT.climb * dt, p.pos.x, p.pos.z, CAT.height, CAT.radius);
     if (climbTo < p.pos.y + CAT.climb * dt - 1e-6) {
-      // Head against a ceiling (a floor above, a bridge deck): hang for a beat, then drop.
+      // Head against something above the wall face. If it is a thin eave or ledge within a paw's reach
+      // with room to stand on top, hook over it — which is what a cat does at the overhang of a roof —
+      // instead of sliding back down the wall.
+      const head = p.pos.y + CAT.height;
+      const lid = physics.query(p.pos.x, p.pos.z, .25).find(o => o !== s && o.maxY > head - .05 && o.minY < head + .35 && o.maxY - p.pos.y <= CAT.climbHeight + .6 && o.maxY - o.minY <= .45 && physics.headroom(p.pos.x, p.pos.z, o.maxY + .02, o));
+      if (lid) {
+        p.pos.y = lid.maxY + .02; p.climbing = null; p.climbCooldown = .38; p.mantling = .3;
+        p.vy = .6; p.vx = wall.nx * 1.1; p.vz = wall.nz * 1.1; p.jumpBuffer = 0;
+        events.mantle?.(lid);
+        return { wall, climbed: true };
+      }
+      // Otherwise hang for a beat, then drop.
       p.pos.y = Math.max(p.pos.y, climbTo); p.climbing = null; p.climbCooldown = .6; p.vy = -.5; p.speed = 0;
       return { wall, climbed: false };
     }
@@ -355,6 +366,11 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
       p.pos.z += (wall.qz + wall.nz * (CAT.radius + .025) - p.pos.z) * (1 - Math.exp(-24 * dt));
     }
     if (p.pos.y >= s.maxY - .035) {
+      // The face carries on above this wall — a house's upper storey standing on its ground-floor
+      // wall, a plinth under a facade — so keep climbing it rather than dropping off the ledge
+      // between the two.
+      const carry = physics.nearbyWall(p.pos, .55, p.heading, s, .08);
+      if (carry && carry.solid.maxY > s.maxY + .06) { p.climbing = carry; p.pos.y = s.maxY + .01; return { wall: carry, climbed: true }; }
       const spot = landingSpot(p.pos, wall, s, physics);
       if (!physics.headroom(spot.x, spot.z, spot.y, s)) {
         // Nothing to stand on up there (an inside wall under a floor): let go.

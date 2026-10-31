@@ -60,7 +60,9 @@ npm start            # serves on http://localhost:3000
 npm test             # Playwright tests (first time: npx playwright install chromium)
 ```
 
-Deploy by serving the folder over HTTPS (the service worker needs it). The repository deploys to GitHub Pages from `main`.
+Deploy by serving the folder over HTTPS (the service worker needs it). The repository deploys to GitHub Pages from `main`. `scripts/push.sh "message"` builds nothing — build first — then commits everything and pushes.
+
+Continuing the project? Start with [`HANDOFF.md`](HANDOFF.md): architecture, test API, release checklist, open bugs and the pitfalls learned so far.
 
 ## How it is built
 
@@ -84,6 +86,7 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.7.1** – Settings show the real version and build time, and a **Check for updates** button asks the service worker for a newer build (comparing `version.json` straight from the server) and reloads when one is ready. `HANDOFF.md` added: a working guide for whoever continues the project.
 - **1.7.0** – Time, water and ways to travel. A full day–night cycle with sunset, dusk, stars, moon, lit windows and lamps, and dawn, plus a HUD clock and a time setting. Train carriages are hollow and enterable, with benches and passengers. Flights are no longer a cut: the cat sits in a window seat among other passengers while the plane taxis, takes off, climbs, cruises above clouds, descends, lands and taxis in; cameras move between seat, window, aisle and outside views; the world changes country under the clouds; a Skip button is available. New lake blocks with jetties, reeds, lily pads and rowing boats that go where you point them; a seafront three blocks north with promenade, beach, harbour wall, lighthouse and boats, and open sea beyond (the railway continues on a viaduct; no airports or stations at sea). Balloon fields with real balloon rides on the wind that land wherever they come down. Townsfolk keep to dry land.
 - **1.6.0** – Taller, wider, better dressed. Towers are real multi-storey buildings: a lobby, a floor every three metres (offices, gyms, cafés, flats), scissor stairs along the back wall and a glass lift in the corner that takes the cat up when it steps aboard and comes when called. Many houses grow an L-shaped wing with its own pitched roof and a room inside. A wardrobe (H) replaces the hat list: hats, neckwear and backpacks can all be worn at once, previewed on a live 3D cat you can spin. Collected shinies show their true per-kind counts. The cat moves like a cat: blended walk/trot/gallop gaits, sways, stretches and sits when idle. The camera can look straight up and down. Fixed: the cat can no longer climb through a ceiling onto the roof from inside a house; mantling onto a gable roof no longer leaves the cat inside the roof with the camera snapping about.
 - **1.5.0** – Indoors and abroad. Every house, the works, the towers and the depot now have interiors you can walk into, with furniture that is solid and people who live there. A railway with a running steam train (ride on the roof), footbridges, sidings and signal boxes. An airport with a terminal, a control tower and a plane: board it and fly to one of three other countries, each with its own palette, trees, weather and street names; fly home again from there. Airliners cross the sky; two hot-air balloons drift over the town. New sounds: whistle, chuff, jets. Snow-capped pines, palms and a snowman where the climate calls for them. Fixed: tile strips on gable roofs no longer leave invisible walls on the roof.

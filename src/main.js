@@ -824,8 +824,28 @@ function syncInstall() {
   $('install-now-button').firstChild.textContent = installPrompt ? 'Install Whiskerfield ' : installed ? 'Back to my world ' : 'Got it. Thank you ';
   $('install-instructions').hidden = !!installPrompt || installed;
 }
+// Version and updates. The build stamps the version in; "Check for updates" asks the service worker
+// to look for a newer build (and compares version.json straight from the server as a fallback).
+const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev', BUILD_ID = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : '';
+function setUpdateLabel(text) { const l = $('update-label'); if (l) l.textContent = text; }
+async function checkForUpdates(manual = false) {
+  const btn = $('update-button'); if (btn) btn.disabled = true; setUpdateLabel('Checking…');
+  try {
+    if (updateReady) { setUpdateLabel('Update ready — reloading…'); setTimeout(() => location.reload(), 400); return; }
+    let remote = null; try { const res = await fetch(`./version.json?v=${Date.now()}`, { cache: 'no-store' }); if (res.ok) remote = await res.json(); } catch {}
+    if (swRegistration) { await swRegistration.update().catch(() => {}); }
+    const newer = remote && (remote.version !== APP_VERSION || remote.build !== BUILD_ID);
+    if (swRegistration?.waiting) { updateReady = true; setUpdateLabel(`Update to ${remote?.version || 'a newer build'} ready — reloading…`); swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' }); setTimeout(() => location.reload(), 600); return; }
+    if (newer && !swRegistration) { setUpdateLabel(`Version ${remote.version} is available — reloading…`); setTimeout(() => location.reload(true), 600); return; }
+    if (newer) { setUpdateLabel(`Version ${remote.version} is downloading… tap again in a moment.`); }
+    else setUpdateLabel(remote ? `Up to date (${APP_VERSION}, built ${BUILD_ID})` : navigator.onLine ? `Up to date (${APP_VERSION})` : 'Offline — using the saved copy.');
+  } finally { if (btn) btn.disabled = false; }
+}
 async function setupPWA() {
   syncInstall();
+  $('version-label').textContent = `Whiskerfield ${APP_VERSION}`; $('version-label').title = BUILD_ID ? `Built ${BUILD_ID}` : '';
+  $('update-button').addEventListener('click', () => checkForUpdates(true));
+  setTimeout(() => checkForUpdates(false), 2500);
   window.addEventListener('online', syncInstall); window.addEventListener('offline', syncInstall);
   if (!('serviceWorker' in navigator) || !window.isSecureContext) { $('offline-label').textContent = 'Online preview'; $('install-ready').querySelector('span').textContent = 'Offline install needs HTTPS or localhost.'; return; }
   try {
@@ -833,7 +853,7 @@ async function setupPWA() {
     swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     swRegistration.addEventListener('updatefound', () => {
       const worker = swRegistration.installing;
-      worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && hadController) { updateReady = true; if (started) toast('Update ready. Tap to reload.', 'update', 9000); else location.reload(); } });
+      worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && hadController) { updateReady = true; setUpdateLabel('Update ready — tap Check for updates to reload.'); if (started) toast('Update ready. Tap to reload.', 'update', 9000); else location.reload(); } });
     });
     await navigator.serviceWorker.ready; offlineReady = true; syncInstall();
     if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

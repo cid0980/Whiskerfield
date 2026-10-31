@@ -3,7 +3,10 @@ import { readFile, writeFile, copyFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 
-await build({entryPoints:['src/main.js'],bundle:true,minify:true,format:'esm',target:['es2020'],outfile:'assets/game.js',legalComments:'none',logLevel:'info'});
+const pkg=JSON.parse(await readFile('package.json','utf8'));
+const buildId=new Date().toISOString().slice(0,16).replace('T',' ')+' UTC';
+await build({entryPoints:['src/main.js'],bundle:true,minify:true,format:'esm',target:['es2020'],outfile:'assets/game.js',legalComments:'none',logLevel:'info',define:{__APP_VERSION__:JSON.stringify(pkg.version),__BUILD_ID__:JSON.stringify(buildId)}});
+await writeFile('version.json',JSON.stringify({version:pkg.version,build:buildId})+'\n');
 await copyFile('node_modules/three/LICENSE','assets/Three-LICENSE.txt');
 const svg=await readFile('icons/icon.svg');
 await sharp(svg).resize(192,192).png().toFile('icons/icon-192.png');
@@ -18,9 +21,10 @@ const CACHE='whiskerfield-${version}';
 const FILES=${JSON.stringify(files)};
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('whiskerfield-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()).then(()=>self.clients.matchAll({includeUncontrolled:true})).then(clients=>clients.forEach(client=>client.postMessage({type:'OFFLINE_READY'}))));});
+self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('fetch',event=>{
   const request=event.request,url=new URL(request.url);
-  if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.endsWith('/sw.js'))return;
+  if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.endsWith('/sw.js')||url.pathname.endsWith('/version.json'))return;
   event.respondWith(caches.open(CACHE).then(async cache=>{
     const cached=await cache.match(request,{ignoreSearch:true});
     if(cached)return cached;
@@ -30,4 +34,4 @@ self.addEventListener('fetch',event=>{
 });
 `;
 await writeFile('sw.js',sw);
-console.log(`Offline app built: ${version}, ${files.length} precached files.`);
+console.log(`Offline app built: v${pkg.version} (${version}), ${files.length} precached files.`);

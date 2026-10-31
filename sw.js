@@ -1,11 +1,12 @@
 /* Whiskerfield: every game asset is local and precached. */
-const CACHE='whiskerfield-1b3199f9fe14';
+const CACHE='whiskerfield-8348524f0a7d';
 const FILES=["./","./index.html","./styles.css","./assets/game.js","./manifest.webmanifest","./icons/icon.svg","./icons/icon-192.png","./icons/icon-512.png","./icons/icon-maskable-512.png","./assets/fonts/dm-sans-regular.woff2","./assets/fonts/dm-sans-medium.woff2","./assets/fonts/dm-sans-semibold.woff2"];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('whiskerfield-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()).then(()=>self.clients.matchAll({includeUncontrolled:true})).then(clients=>clients.forEach(client=>client.postMessage({type:'OFFLINE_READY'}))));});
+self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('fetch',event=>{
   const request=event.request,url=new URL(request.url);
-  if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.endsWith('/sw.js'))return;
+  if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.endsWith('/sw.js')||url.pathname.endsWith('/version.json'))return;
   event.respondWith(caches.open(CACHE).then(async cache=>{
     const cached=await cache.match(request,{ignoreSearch:true});
     if(cached)return cached;

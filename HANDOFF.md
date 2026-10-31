@@ -203,15 +203,20 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    (in water, `y<.34`, no solid footing within .08) → floated to the waterline, .62× speed, `grounded` kept
    true so the step logic lifts it onto the bank, `swimTime` drift-to-shore after 20 s, and a `swimBlend`
    paddle in `cat.js`. Test: dropped into the lake it floats at `y .05` and paddles out to dry land in ~6 s.
-6. **Furniture in doorways / furniture looks bad. [pair C]** `furnishHouse` places kits by room rectangle
-   without excluding the doorway or window strips. Plan: compute a "no-go" strip in front of every doorway
-   (and the path between the two rooms) and reject placements intersecting it; keep ≥ .9 m clear path
-   from door to each room; improve kit visuals (legs, backs, cushions, lamps, rugs) — look at
-   `rooms.js` kits and the works floor; compare screenshots before/after.
-7. **Tower stairs look bad and are hard to walk. [pair C]** `makeTower` scissor stairs are ramps of thin
-   slabs; the cat catches on edges. Plan: real steps (≤ .25 rise, ≥ .3 tread) with solid stringers and
-   handrails, a landing every half flight, and a slightly wider shaft; verify with the lift test recipe
-   (`g.teleport(spec.x,.6,spec.z+2.2); g.setCamera(0); g.hold.y=-1`).
+6. **[DONE in 1.7.6, pair C]** Furniture in doorways. `hollow()` now reports `door` + `at`, and
+   `furnishKit()` (rooms.js) furnishes a room through `apronShim()`: a shim over the batch *and* the
+   world's solid helpers that drops anything landing in a door apron (`doorAprons`) or the partition gap
+   from both the mesh and the collider list, so no kit had to be touched. `furnishHouse` also slides the
+   partition clear of the front door (`doorAxis` — mind the tangent sign, it flips with the side), and
+   `doorway()`'s leaf lies flat against the wall instead of standing in the opening. `building.door` is
+   recorded for every house, shop, wing and interior, so tests can walk every door in town.
+7. **[DONE in 1.7.6, pair C]** Tower stairs. `places.js::stairs()` builds flat treads (rise < .21 m, about
+   fifteen per 3.1 m floor) as upright boxes with their own `kind:'step'` solids; the tilted stringer is
+   gone, and the stair well in the slab above reaches back 3.1 m so a climbing cat's head is under the
+   opening. **Pitfall:** `ramp()` draws tilted slabs and adds *no* solid — the auto-collider pass then
+   gives each one a bounding-box collider, so a "ramp" is really a jagged invisible stair, and a tilted
+   stringer becomes one huge invisible wall across the flight (the cat scrambles up it to 2.5 m and
+   falls). Never build a walkable slope out of tilted boxes; use upright treads.
 8. **Planes clip buildings on take-off/landing. [pair D]** The runway is only one chunk; the climb path
    starts at `len/2` and the descent from 60 m passes over the neighbouring blocks. Plan: keep airport
    chunks' neighbours along the runway axis low (force `lanes`/`park` themes with no towers for

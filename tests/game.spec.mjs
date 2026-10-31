@@ -647,7 +647,7 @@ test('indoors and abroad: furnished houses, a works floor, a train you can ride,
   expect(r.wallStop).toBe(true); expect(r.furniture).toBeGreaterThanOrEqual(3);
   expect(r.trainArrived).toBe(true); expect(r.onTrain).toBe('car'); expect(r.carried).toBeGreaterThan(5);
   expect(r.inCarriage.support).toBe('car'); expect(r.inCarriage.y).toBeCloseTo(1.06, 1); expect(r.inCarriage.seats).toBeGreaterThanOrEqual(4);
-  expect(r.boarded.modal).toBe('flight-modal'); expect(r.boarded.support).toBe('floor');
+  expect(r.boarded.modal).toBe('flight-modal'); expect(r.boarded.support).toBe('seat'); // the cat sits on its cushion, not on the floor beside it
   expect(r.flightOk).toBe(true); expect(r.phases).toEqual(['board', 'taxi', 'roll', 'climb', 'cruise', 'descend', 'rollout', 'taxiIn', 'stand', null]);
   expect(r.seated).toEqual({ visible: true, atSeat: true, high: true, camInside: true });
   expect(r.country).toBe('sunmarch'); expect(r.landedNear).toBe(true); expect(r.catVisible).toBe(true); expect(r.doorOpen).toBe(1); expect(r.seedLabel).toContain('Sunmarch');

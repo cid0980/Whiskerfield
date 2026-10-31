@@ -6,7 +6,8 @@ cost the previous sessions time. **Read it fully before changing code.** Keep it
 something listed here, remove it; when you learn a pitfall, add it.
 
 Repository: https://github.com/cid0980/Whiskerfield (branch `main`, deploys to GitHub Pages automatically:
-https://cid0980.github.io/Whiskerfield/). Current version **1.7.1**.
+https://cid0980.github.io/Whiskerfield/). Current version **1.7.2** — `npx playwright test`: **18/18 green**
+(11.3 min on this 2-CPU sandbox). Next: pair B (items 4 and 5 below), then 1.8.0 when the list is done.
 
 ---
 
@@ -94,6 +95,11 @@ bump `package.json` version → delete scratch files → `scripts/push.sh "vX.Y.
   `g.camera`, `g.renderer`, `g.day` (`.hour`, `.mode='pin'`, `.update(dt,camera,pos,lamps)`),
   `g.train`, `g.planes`, `g.flight`, `g.vehicles.list` (Map by id), `g.lifts.cars`, `g.people.list`,
   `g.board('sunmarch')` starts a flight, `g.travel(id)`, `g.wear`, `g.outfit`, `g.adapt(ms)`, `g.getQuality()`.
+- Camera: `g.setCamera(yaw, pitch, distance)`, then **`g.settle(120)`** — it runs `updateCamera(1/60)`
+  120 times, so camera tests do not wait for software-WebGL frames (which can be 1 s each). `g.cameraInfo()`
+  returns `{ indoors, blocked, inside, distance, lookUp }`: `blocked` is the fraction of the line of sight
+  the camera can clear (1 = the cat is in view), `inside` names any solid the eye is buried in (should be
+  null), `lookUp` is the view pitch in radians. `g.getState()` also reports `indoors`, `cameraPitch`, `cameraYaw`.
 - Seed `moss-424` facts: square at (0,0); gable house `0,0:0` at (−16.43, −16.46); lake block at chunk
   (−1,1) → water centre (−72,72) r 24, jetty along z=72 from x −100.5 to −88, boats `-1,1:boat0/1` at
   (−90.4, 70.28/73.72); balloon field lot `0,-1:3` at (16.5, −55.5) (basket at centre, steps on +x side);
@@ -154,7 +160,9 @@ called inside `simulate()` *before* the cat moves and returns true when a boat t
 
 Day cycle; enterable train carriages; the full in-cabin flight with landing; lake/jetty/boats steering and
 shore stop; seafront/pier/lighthouse/sea; balloon ride end-to-end; wardrobe; towers with lifts; PWA
-offline; settings version label + "Check for updates" (SW `update()` + `version.json`, `SKIP_WAITING`).
+offline; settings version label + "Check for updates" (SW `update()` + `version.json`, `SKIP_WAITING`);
+the camera indoors (house, carriage, cabin, tower lift) with the cat always in view; looking up at the sky;
+riding the train/balloon without the view lagging; walking past scenery without scrambling on it.
 
 ## 7. OPEN BUGS — the owner's list (do these, in this order, in pushed pairs)
 
@@ -162,27 +170,19 @@ Plan each one (read the relevant code first, reproduce with a `scripts/*.tmp.mjs
 a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 1. **[DONE in 1.7.1]** Check-for-updates button + version in settings.
-2. **Camera — the biggest complaint. [pair A]**
-   - Inside buildings the camera ends up *outside* the walls so the cat is not visible. The collision
-     code pulls the camera toward the cat only against some solids; walls/ceilings of hollow houses, train
-     carriages, plane cabin and tower floors are not handled consistently. Plan: a proper sphere-cast from
-     cat to desired camera position against **all** nearby solids (static + dynamic, boxes/cylinders/roofs),
-     then a short "interior mode": when `physics.ceiling()` is low, cap distance (~2.2 m) and raise pitch
-     floor; smooth distance changes (no snapping); never let the near plane clip through a wall.
-   - "I can't look up at the sky / can't see planes and balloons": pitch clamp and the auto-pitch
-     recentre fight the user. Plan: allow pitch to ≈ −1.3 (looking up), stop auto-recentring while the user
-     is dragging and for ~2 s after, make the ground-collision rule only lift the camera, not cap pitch.
-   - "View gets fixed / lags / snaps" while riding the balloon, boat, train: the camera target lerps toward
-     `player.pos` which is moved *after* the camera update by `carry()`. Plan: run `carry()`/vehicle update
-     before the camera update in the loop, and base the camera on the **post-carry** position; while on a
-     moving support, add the support's velocity to the camera target each frame (no lag).
-   - Make camera sensitivity/inertia consistent for drag, touch and gamepad; test with `g.hold.camera=null`
-     and real pointer drags in Playwright.
-3. **Cat jitter against shapes. [pair A]** The cat "keeps jumping here and there" when touching objects:
-   auto-scramble (`wallPush`) triggers on tiny decorative solids and auto-colliders; `resolve()` pushing out
-   of overlapping neighbouring boxes causes oscillation. Plan: require the wall to be ≥ .6 m tall and the
-   target top reachable before auto-scramble; ignore auto-colliders smaller than ~.35 m for climbing;
-   damp `resolve()` (max push per step) and stop auto-climb while `player.speed<.3`.
+2. **[DONE in 1.7.2, pair A]** Camera. `updateCamera` in `main.js` is one orbit rig now: a swept
+   sphere (`physics.segmentHit`, boxes/cylinders/ellipsoids/roofs-as-slopes) pulls the eye in until
+   nothing is between it and the cat, `physics.headroomAbove` (room-sized solids only) switches on
+   "indoors", which shortens the lens to suit the ceiling, dips the eye under it, and searches nearby
+   yaw/pitch for the direction with most room when the cat is cornered. Pitch runs to −1.32, and a
+   ground-lifted eye carries the look-at point up with it. Moving supports (`vehicle/train/lift/plane`)
+   are followed by the frame's whole delta before smoothing. One `orbit()`/`sensitivity()` path serves
+   drag, pinch, wheel and gamepad. Verified by the new camera test and `scripts/camera-shots.mjs` before/after grids.
+3. **[DONE in 1.7.2, pair A]** Cat jitter. `nearbyWall` ignores solids the cat can step onto, ignores
+   auto-colliders under 0.6 m tall or paper-thin, and `perchAbove()` refuses a low wall with nowhere to
+   stand on top (tall walls defer to the mantle, as before). `resolve()` caps each push at 0.2 m and does
+   4 passes. Measured with `scripts/jitter-probe.mjs` (square lane: 1 direction flip and 3.1 rad of
+   wobble → 0; east pavement: 2 scrambles/42 airborne steps → 1 car bonnet/12).
 4. **Train walking is hard. [pair B]** Interior is 2.6 m wide with benches as solids; doors 1.3 m; the
    cat slides off the running board; boarding needs you to be exactly at a door. Plan: widen floor solid,
    make benches `walkable` tops, add a low lip at doors, make the platform-to-car gap zero, and make the
@@ -214,8 +214,9 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
     parts from one `height` scale; for sitting, use `physics.support()` at the bench and set hip height to
     the bench top; make `greet` trigger when the cat is within 1.8 m and visible, with the person turning
     to face it; re-check the "neighbours wander freely" test.
-11. **Balloon/boat ride view "stuck, lagging, fixed".** Covered by item 2 (camera) — verify specifically
-    while riding (`g.vehicles`), including pitch up/down and drag during the ride.
+11. **[DONE in 1.7.2]** Balloon/boat ride view "stuck, lagging, fixed": fixed with item 2 (the ride is
+    followed rigidly). Re-verify from the balloon/boat scenes in `scripts/cam.tmp.mjs` if the carry code
+    changes.
 
 When all of the above are done, bump to 1.8.0 with a changelog entry summarising "camera, movement and
 interiors overhaul".
@@ -233,8 +234,16 @@ interiors overhaul".
   swallows the rest of the line (use `/* */`).
 - `people.dispose()` resets `physics.dynamic=[]` — only safe during world swap. All dynamic solids must be
   re-added after a swap (planes.sync, lifts.sync, vehicles.sync are called).
-- A plane's belly/crown cylinders are full cylinders; from inside they are invisible (back-face culled),
-  but a camera at `y ≥ floor+1.4` sees the green belly top. Interior cameras stay below that.
+- The aeroplane's shell is built from `GEO.halfTube` (see `world.js`): two half-tubes opening towards the
+  cabin, so the fuselage's own skin is never drawn inside it. If you swap them back to `GEO.cylinder`, any
+  camera off the aisle centre sees the livery tube straight across the cabin. The `rz` sign picks the half:
+  `+Math.PI/2` keeps the top, `-Math.PI/2` the bottom.
+- `physics.headroomAbove` only counts *room-sized* solids as ceilings (≥2.4 m in both directions): otherwise
+  a table top over the cat's head would put the camera into interior mode on the street.
+- `nearbyWall` now ignores anything the cat can step onto and auto-colliders under 0.6 m — if a new place
+  needs a small climbable prop, give it an explicit solid with `climbable: true`.
+- Camera probe scenes must close modals (`#flight-modal [data-close]`) and use `g.settle()`; a screenshot
+  with a modal open shows the backdrop, not the camera.
 - Plane window "glass" boxes are opaque — window holes are real openings; frames are four thin strips.
 - Interior cameras during flight must be rigid (no lerp) or they lag behind a climbing plane.
 - `cat.update()` sets poses; `cat.root.rotation.y = player.heading` is set in `main.js`; during flight the
@@ -248,8 +257,26 @@ interiors overhaul".
 - The train's `stationsNear()` must return at least one station (the first ashore) or `place()` throws.
 - NPC `chooseNext()` must always set `this.target` (idle if no options) or `update()` throws.
 - Node sandbox: `/home/user/screenshots` and `scripts/*.tmp.mjs` are scratch — delete before pushing.
+- `ponds, fountains, birds…` is mildly flaky: it asserts that most birds perch below 3.4 m, and the perches
+  are chosen on real frames before the deterministic part starts. Re-run it before believing a failure —
+  the same is true of anything that depends on where people and birds happen to be standing.
 
 ## 9. Scratch scripts worth recreating
+
+Two probes are checked in (they drive the `?test=1` API, so `npm start` first):
+
+- `node scripts/camera-shots.mjs after [scene]` — puts the cat in every room and ride (`house`, `train`,
+  `plane`, `tower`, `sky`, `balloon`, `planeout`, `street`), settles the camera with `g.settle()`, prints
+  distance / whether the eye is buried / whether the cat is visible, and writes
+  `/home/user/screenshots/<tag>-<scene>.png`. Compose a grid with Pillow and look at it.
+- `node scripts/jitter-probe.mjs 3000 after` — walks six lanes (pavements, square, market, park) and counts
+  auto-scrambles, direction flips, airborne steps and how far the cat got. Give it another port to compare
+  against an older build: `git worktree add /tmp/before HEAD`, `npm run build` there (symlink `node_modules`),
+  `PORT=3100 node server.mjs`, then probe 3100 too.
+
+Also worth knowing: the sandbox has 2 CPUs, so run **one** browser at a time. Two Playwright runs (or a probe
+plus the suite) starve each other and every test starts timing out or returning junk — that is not a bug in
+the game.
 
 `scripts/shot.tmp.mjs`-style: launch chromium 900×560, `goto('http://localhost:3000/?test=1&seed=moss-424')`,
 wait ready, click `#start-button`, wait welcome opacity 0, then `page.evaluate` with `g.step` loops, then

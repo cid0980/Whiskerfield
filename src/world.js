@@ -37,7 +37,10 @@ const sphereGeo = new THREE.IcosahedronGeometry(1, 1);
 const softSphereGeo = new THREE.IcosahedronGeometry(1, 1);
 const potGeo = new THREE.CylinderGeometry(1, .72, 1, 9);
 const torusGeo = new THREE.TorusGeometry(1, .12, 5, 16);
-export const GEO = Object.freeze({ box: boxGeo, cylinder: cylinderGeo, tapered: taperedGeo, cone: coneGeo, sphere: sphereGeo, softSphere: softSphereGeo, pot: potGeo, torus: torusGeo });
+// A half-tube (the half with local +x, i.e. "up" once turned a quarter turn about z). The aeroplane's
+// shell is built from two of these, open towards the cabin, so its own skin is never drawn inside it.
+const halfTubeGeo = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true, 0, Math.PI);
+export const GEO = Object.freeze({ box: boxGeo, cylinder: cylinderGeo, tapered: taperedGeo, cone: coneGeo, sphere: sphereGeo, softSphere: softSphereGeo, pot: potGeo, torus: torusGeo, halfTube: halfTubeGeo });
 
 // The one material every merged chunk uses. A per-vertex `glow` attribute lets lamps, lit windows
 // and signs shine after dark: the `night` uniform (0 by day, 1 at night) scales their emission.

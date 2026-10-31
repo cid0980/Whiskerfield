@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // All distances are metres. The cat is ~0.5 m tall; adults are 1.62–1.86 m.
-export const CAT = Object.freeze({ scale: .34, radius: .16, height: .49, step: .25, gravity: 22, jump: 7.7, sprintJump: 8.25, climb: 6.8 });
+export const CAT = Object.freeze({ scale: .34, radius: .16, height: .49, step: .25, gravity: 22, jump: 7.7, sprintJump: 8.25, climb: 6.8, climbHeight: .6 });
 const clamp = THREE.MathUtils.clamp;
 const EPS = 1e-5;
 export const angleDelta = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -31,6 +31,61 @@ export function surfaceHeight(s, x, z) {
   return x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ ? s.maxY : -Infinity;
 }
 
+// ---- swept-sphere helpers, used by the camera -------------------------------------------------
+// Each returns the fraction [0, 1] along the segment at which a sphere of `radius` centred on the
+// moving point first touches the solid, or Infinity when the way is clear.
+function sweepBox(o, d, s, radius) {
+  let tmin = 0, tmax = 1;
+  for (const [os, ds, lo, hi] of [[o.x, d.x, s.minX - radius, s.maxX + radius], [o.y, d.y, s.minY - radius, s.maxY + radius], [o.z, d.z, s.minZ - radius, s.maxZ + radius]]) {
+    if (Math.abs(ds) < 1e-9) { if (os < lo || os > hi) return Infinity; continue; }
+    let a = (lo - os) / ds, b = (hi - os) / ds; if (a > b) { const t = a; a = b; b = t; }
+    if (a > tmin) tmin = a; if (b < tmax) tmax = b;
+    if (tmin > tmax) return Infinity;
+  }
+  return tmin;
+}
+// A vertical cylinder: a circle swept in the ground plane, clipped to its height band.
+function sweepCylinder(o, d, s, radius) {
+  let t0 = 0, t1 = 1;
+  const r = s.r + radius, ox = o.x - s.x, oz = o.z - s.z;
+  const a = d.x * d.x + d.z * d.z, b = 2 * (ox * d.x + oz * d.z), c = ox * ox + oz * oz - r * r;
+  if (a < 1e-9) { if (c > 0) return Infinity; }
+  else {
+    const disc = b * b - 4 * a * c; if (disc < 0) return Infinity;
+    const sq = Math.sqrt(disc);
+    t0 = Math.max(0, (-b - sq) / (2 * a)); t1 = Math.min(1, (-b + sq) / (2 * a));
+    if (t0 > t1) return Infinity;
+  }
+  const lo = s.minY - radius, hi = s.maxY + radius;
+  let y0 = 0, y1 = 1;
+  if (Math.abs(d.y) < 1e-9) { if (o.y < lo || o.y > hi) return Infinity; }
+  else {
+    let a2 = (lo - o.y) / d.y, b2 = (hi - o.y) / d.y; if (a2 > b2) { const t = a2; a2 = b2; b2 = t; }
+    y0 = Math.max(0, a2); y1 = Math.min(1, b2);
+    if (y0 > y1) return Infinity;
+  }
+  return Math.max(t0, y0);
+}
+function sweepEllipsoid(o, d, s, radius) {
+  const rx = s.rx + radius, ry = s.ry + radius, rz = s.rz + radius;
+  const ox = (o.x - s.x) / rx, oy = (o.y - s.y) / ry, oz = (o.z - s.z) / rz;
+  const vx = d.x / rx, vy = d.y / ry, vz = d.z / rz;
+  const c = ox * ox + oy * oy + oz * oz - 1; if (c <= 0) return 0;
+  const a = vx * vx + vy * vy + vz * vz; if (a < 1e-12) return Infinity;
+  const b = 2 * (ox * vx + oy * vy + oz * vz), disc = b * b - 4 * a * c; if (disc < 0) return Infinity;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : Infinity;
+}
+// Pitched roofs are height fields, not boxes: sample along the line and stop where the line dips
+// under the tiles (plus the sphere's own radius).
+function sweepRoof(o, d, s, radius, steps = 10) {
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, h = surfaceHeight(s, o.x + d.x * t, o.z + d.z * t);
+    if (Number.isFinite(h) && o.y + d.y * t < h + radius) return (i - 1) / steps;
+  }
+  return Infinity;
+}
+
 export class PhysicsWorld {
   constructor(world) { this.world = world; this.stamp = 0; this.seen = new WeakMap(); this.dynamic = []; }
   query(x, z, radius = 1) {
@@ -55,6 +110,44 @@ export class PhysicsWorld {
     }
     return y;
   }
+  // Sweep a sphere of `radius` from `from` to `to` and report where it first touches something:
+  // { t, solid }, with t = 1 when the line is clear. `filter(solid)` skips solids the caller does
+  // not care about (foliage, people, low scenery). This is what keeps the camera out of walls,
+  // ceilings, carriages and cabins — one cast against every shape, not a special case per room.
+  segmentHit(from, to, radius = 0, filter = null) {
+    const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    const length = Math.hypot(dx, dy, dz);
+    if (length < 1e-6) return { t: 1, solid: null };
+    let best = 1, solid = null;
+    for (const s of this.query((from.x + to.x) / 2, (from.z + to.z) / 2, length / 2 + radius + .5)) {
+      if (filter && !filter(s)) continue;
+      const t = s.shape === 'cylinder' ? sweepCylinder(from, { x: dx, y: dy, z: dz }, s, radius)
+        : s.shape === 'ellipsoid' ? sweepEllipsoid(from, { x: dx, y: dy, z: dz }, s, radius)
+          : s.shape === 'roof' ? sweepRoof(from, { x: dx, y: dy, z: dz }, s, radius)
+            : sweepBox(from, { x: dx, y: dy, z: dz }, s, radius);
+      if (t < best) { best = t; solid = s; if (best <= 0) break; }
+    }
+    return { t: best, solid };
+  }
+  // Distance from the given feet height to the nearest solid overhead. The camera reads this to
+  // know it is indoors (a low number means a room, a carriage or a cabin, not the open sky).
+  headroomAbove(x, z, feetY, radius = .3) {
+    let best = Infinity;
+    for (const s of this.query(x, z, radius)) {
+      if (s.sensor || s.shape === 'roof' || s.shape === 'ellipsoid') continue;
+      const gap = s.minY - feetY;
+      if (gap <= .45 || gap >= best) continue;
+      // Only something the size of a room counts as a ceiling: a table top or an awning above the
+      // cat is furniture, not a roof, and must not put the camera into "indoors" mode.
+      const wide = s.shape === 'cylinder' ? s.r >= 1.2 : s.maxX - s.minX >= 2.4 && s.maxZ - s.minZ >= 2.4;
+      if (!wide) continue;
+      // ...and it has to be overhead, not merely in a neighbouring building.
+      const over = s.shape === 'cylinder' ? Math.hypot(x - s.x, z - s.z) <= s.r + radius
+        : x >= s.minX - radius && x <= s.maxX + radius && z >= s.minZ - radius && z <= s.maxZ + radius;
+      if (over) best = gap;
+    }
+    return best;
+  }
   support(x, z, reference, includeRoofs = true) {
     const g = this.world.groundHeight(x, z);
     let best = { y: g <= reference + EPS ? g : 0, solid: null };
@@ -69,7 +162,7 @@ export class PhysicsWorld {
   // corners without the old axis-by-axis "sticky wall" behaviour.
   resolve(position, radius, height, ignore = null) {
     let contacts = 0;
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < 4; pass++) {
       let moved = false;
       for (const s of this.query(position.x, position.z, radius + .1)) {
         if (s === ignore || s.sensor || s.shape === 'roof') continue;
@@ -104,7 +197,7 @@ export class PhysicsWorld {
             dx = faces[0].x; dz = faces[0].z; distance = 0; targetRadius = radius + faces[0].d;
           } else targetRadius = radius;
         }
-        const push = targetRadius - distance + .001;
+        const push = Math.min(targetRadius - distance + .001, .2);
         position.x += dx / (distance || 1) * push; position.z += dz / (distance || 1) * push;
         contacts++; moved = true;
       }
@@ -133,10 +226,19 @@ export class PhysicsWorld {
     }
     return true;
   }
-  nearbyWall(position, maxDistance = .52, heading = null, standingOn = null) {
+  // The nearest thing worth climbing: a cat scrambles up walls, trunks and chimneys, but it steps
+  // over kerbs, benches and flower pots, and it does not shin up every crate-sized lamp base it
+  // brushes past. Anything shorter than a cat (0.6 m) is scenery, not a wall.
+  nearbyWall(position, maxDistance = .52, heading = null, standingOn = null, minRise = CAT.step + .05) {
     let best = null, score = Infinity;
     for (const s of this.query(position.x, position.z, maxDistance + .4)) {
       if (s === standingOn || !s.climbable || s.maxY <= position.y + .015 || s.minY > position.y + CAT.height) continue;
+      // Anything the cat can simply step onto is not a climb (but a climb already under way is
+      // finished even when only the last paw's height of wall is left).
+      if (s.maxY - position.y < minRise) continue;
+      // Auto-colliders are every decorative primitive in the town. Only the substantial ones count
+      // as walls: a knee-high planter or a sliver of roof trim is scenery, not something to shin up.
+      if (s.auto && (s.maxY - s.minY < CAT.climbHeight || Math.min(s.maxX - s.minX, s.maxZ - s.minZ) < .12)) continue;
       let nx, nz, qx, qz, distance;
       if (s.shape === 'cylinder' || s.shape === 'ellipsoid') {
         nx = position.x - s.x; nz = position.z - s.z; distance = Math.hypot(nx, nz) || 1; nx /= distance; nz /= distance;
@@ -160,6 +262,34 @@ export class PhysicsWorld {
   }
 }
 
+// Where a cat that has climbed `wall` ends up standing: on top, a paw's width back from the edge,
+// or centred on a thin perch (a lamp post, a pot, a tree crown) rather than hopped over it.
+function landingSpot(pos, wall, s, physics) {
+  const d = Math.hypot(pos.x - s.x, pos.z - s.z) || 1;
+  const nx = s.shape === 'box' ? wall.nx : (pos.x - s.x) / d;
+  const nz = s.shape === 'box' ? wall.nz : (pos.z - s.z) / d;
+  const narrow = s.shape !== 'box' && Math.min(s.rx ?? s.r, s.rz ?? s.r) < .6;
+  const x = narrow ? s.x : pos.x - nx * (CAT.radius + .24), z = narrow ? s.z : pos.z - nz * (CAT.radius + .24);
+  return { x, z, nx, nz, narrow, y: Math.max(physics.highest(x, z, s.maxY + 1.6), s.minY) + .025 };
+}
+
+// Is there somewhere to stand above this low wall? Checked before a climb starts, so the cat does
+// not shin up a knee-high lip that ends under a table and drop off it again. Real walls (anything
+// much taller than the cat) are taken at face value — the mantle at the top decides, as it always
+// has, and a wall built in storeys still climbs all the way up.
+function perchAbove(p, wall, physics) {
+  const s = wall.solid;
+  if (s.maxY - p.pos.y > 1.4) return true;
+  const spot = landingSpot(p.pos, wall, s, physics);
+  if (physics.headroom(spot.x, spot.z, spot.y, s)) return true;
+  // Perhaps it is just the bottom of something taller: then the climb carries on upwards.
+  for (const o of physics.query(spot.x, spot.z, .3)) {
+    if (o === s || !o.climbable || o.shape === 'roof' || o.shape === 'ellipsoid') continue;
+    if (o.minY <= s.maxY + .35 && o.maxY > s.maxY + .5) return true;
+  }
+  return false;
+}
+
 export function createPlayer(saved) {
   return {
     pos: new THREE.Vector3(saved?.x ?? 1.1, saved?.y ?? 0, saved?.z ?? 7.1),
@@ -181,11 +311,14 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
   const magnitude = Math.hypot(ix, iz), amount = Math.min(1, magnitude);
   if (magnitude > 1e-4) { ix /= magnitude; iz /= magnitude; } else ix = iz = 0;
   p.moveAmount = amount;
-  const wall = physics.nearbyWall(p.pos, .5, p.heading, p.grounded ? p.support : null);
+  const wall = physics.nearbyWall(p.pos, .5, p.heading, p.grounded ? p.support : null, p.climbing ? 0 : CAT.step + .05);
   // No climbing out of a lift car: the walls of the shaft are not for cats.
   const wantsClimb = !(p.support?.lift) && (input.climb || (input.autoClimb && amount > .3 && !p.grounded && p.airTime > .09 && p.vy < 3.2));
   if (wantsClimb && wall && p.climbCooldown === 0 && !input.resting) {
     const s = wall.solid;
+    // Before a paw leaves the ground: is there anywhere to stand at the top? A wall that leads
+    // under a floor, or a lid of scenery with no room above it, is not a climb — it is a bump.
+    if (!p.climbing && !perchAbove(p, wall, physics)) { p.climbCooldown = .25; return { wall: null, climbed: false }; }
     p.climbing = wall; p.grounded = false; p.vy = 0; p.vx = p.vz = 0; p.speed = CAT.climb;
     p.heading = dampAngle(p.heading, Math.atan2(-wall.nx, -wall.nz), 20, dt);
     const climbTo = physics.ceiling(p.pos.y, p.pos.y + CAT.climb * dt, p.pos.x, p.pos.z, CAT.height, CAT.radius);
@@ -214,19 +347,14 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
       p.pos.z += (wall.qz + wall.nz * (CAT.radius + .025) - p.pos.z) * (1 - Math.exp(-24 * dt));
     }
     if (p.pos.y >= s.maxY - .035) {
-      const nx = s.shape === 'box' ? wall.nx : (p.pos.x - s.x) / (Math.hypot(p.pos.x - s.x, p.pos.z - s.z) || 1);
-      const nz = s.shape === 'box' ? wall.nz : (p.pos.z - s.z) / (Math.hypot(p.pos.x - s.x, p.pos.z - s.z) || 1);
-      // Thin perches (lamp posts, pots, tree crowns) get the cat centred on top instead of hopped over.
-      const narrow = s.shape !== 'box' && Math.min(s.rx ?? s.r, s.rz ?? s.r) < .6;
-      const lx = narrow ? s.x : p.pos.x - nx * (CAT.radius + .24), lz = narrow ? s.z : p.pos.z - nz * (CAT.radius + .24);
-      const ly = Math.max(physics.highest(lx, lz, s.maxY + 1.6), s.minY) + .025;
-      if (!physics.headroom(lx, lz, ly, s)) {
+      const spot = landingSpot(p.pos, wall, s, physics);
+      if (!physics.headroom(spot.x, spot.z, spot.y, s)) {
         // Nothing to stand on up there (an inside wall under a floor): let go.
         p.climbing = null; p.climbCooldown = .6; p.vy = -.5; p.speed = 0; p.pos.y = s.maxY - .05;
         return { wall, climbed: false };
       }
-      p.pos.x = lx; p.pos.z = lz; p.pos.y = ly;
-      p.vy = narrow ? .6 : 1.2; p.vx = narrow ? 0 : -nx * 1.1; p.vz = narrow ? 0 : -nz * 1.1;
+      p.pos.x = spot.x; p.pos.z = spot.z; p.pos.y = spot.y;
+      p.vy = spot.narrow ? .6 : 1.2; p.vx = spot.narrow ? 0 : -spot.nx * 1.1; p.vz = spot.narrow ? 0 : -spot.nz * 1.1;
       p.climbing = null; p.climbCooldown = .38; p.mantling = .3; p.jumpBuffer = 0;
       events.mantle?.(s);
     }

@@ -120,7 +120,12 @@ test('the cat is quick, analog input stays useful, and scenery is solid and clim
     const car = g.world.colliders.find(s => s.kind === 'car' && s.maxY < 1 && s.maxX - s.minX < 2);
     g.teleport((car.minX + car.maxX) / 2, 0, car.maxZ + 1.4); step(5);
     g.hold.y = -1; step(12); g.hold.jump = true; untilMantle(); step(20); out.bonnet = { y: g.player.pos.y, support: g.player.support?.kind };
-    untilMantle(); g.hold.y = 0; step(30); out.carRoof = { y: g.player.pos.y, support: g.player.support?.kind };
+    // One scramble may carry the cat from the road all the way to the roof; if it stopped on the
+    // bonnet, a second one takes it up. Assert straight after the mantle, before the held stick
+    // can walk it off the far side of the car.
+    if (g.player.pos.y < 1.4) { untilMantle(); step(20); }
+    out.carRoof = { y: g.player.pos.y, support: g.player.support?.kind };
+    g.hold.y = 0; g.hold.jump = false; step(30);
     // Lamp post: a thin perch.
     const lamp = g.world.colliders.find(s => s.kind === 'lamp');
     g.teleport(lamp.x, 0, lamp.z + lamp.r + .3); g.player.heading = Math.PI; step(5);
@@ -705,4 +710,84 @@ test('water: a lake with a jetty and boats that go where you point them, a seafr
   expect(r.balloonField).toBeTruthy(); expect(r.inBasket.support).toBe('balloon'); expect(r.inBasket.y).toBeCloseTo(.5, 1);
   expect(r.rising.state).toBe('rising'); expect(r.rising.y).toBeGreaterThan(5); expect(r.rising.catY).toBeGreaterThan(5); expect(r.rising.support).toBe('balloon');
   expect(r.landed.state).toBe('landed'); expect(r.landed.moved).toBeGreaterThan(60); expect(r.landed.catWith).toBe(true); expect(r.landed.catY).toBeCloseTo(.5, 1);
+});
+
+test('the camera: indoors it stays in the room with the cat, it can look up at the sky, and it rides along', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {}, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    const settle = (yaw, pitch = .3, dist = 5.4) => { g.setCamera(yaw, pitch, dist); g.settle(120); return g.cameraInfo(); };
+    // A house: the cat is inside, so the eye must be inside too, with a clear line to the cat.
+    const h = g.world.landmarks.filter(l => l.kind === 'house').find(l => Math.hypot(l.x - 1, l.z - 7) < 40) || g.world.landmarks.find(l => l.kind === 'house');
+    g.teleport(h.x, .6, h.z); step(40);
+    const inRoom = !!(h.inside && g.player.pos.x > h.inside.minX && g.player.pos.x < h.inside.maxX);
+    const view = settle(.6);
+    out.house = { inRoom, indoors: view.indoors, eyeIn: view.inside, blocked: view.blocked, distance: view.distance };
+    // Looking up: the view tips well above the horizon, far more than the old -0.62 clamp allowed.
+    g.teleport(4, .4, 6); step(30);
+    out.sky = settle(.5, -1.15);
+    out.level = settle(.5, .3);
+    // A moving support: the camera keeps station while the train carries the cat.
+    g.teleport(50, 1.3, -16.5); step(30);
+    const t = g.train; let n = 0;
+    while (!(t.state === 'stop' && Math.abs(t.z + 16.5) < .5) && n < 60 * 90) { g.step(1 / 60); n++; }
+    g.teleport(63, 1.3, t.z + 3.2); step(40);
+    g.setCamera(Math.PI / 2, .3, 5.4); g.settle(120);
+    const onCar = g.cameraInfo(); const catZ = g.player.pos.z, camZ = g.camera.position.z;
+    step(60 * 3);
+    out.train = { support: g.getState().support, dist: onCar.distance, dist2: g.cameraInfo().distance, rode: +(catZ - g.player.pos.z).toFixed(1), camRode: +(camZ - g.camera.position.z).toFixed(1), indoors: g.cameraInfo().indoors };
+    return out;
+  });
+  expect(errors).toEqual([]);
+  // Inside the house: indoors mode, the eye in open air (not in a wall or a cupboard) and the cat in view.
+  expect(r.house.inRoom).toBe(true);
+  expect(r.house.indoors).toBe(true);
+  expect(r.house.eyeIn).toBeNull();
+  expect(r.house.blocked).toBe(1);
+  expect(r.house.distance).toBeGreaterThan(0.7);
+  expect(r.house.distance).toBeLessThan(5.5);
+  // Looking up: a much steeper view than the old clamp; level looks roughly level.
+  expect(r.sky.lookUp).toBeGreaterThan(.5);
+  expect(r.level.lookUp).toBeLessThan(0);
+  // Riding: same distance at both ends of the ride, and the eye travels with the cat.
+  expect(r.train.support).toBe('car');
+  expect(r.train.indoors).toBe(true);
+  expect(Math.abs(r.train.dist - r.train.dist2)).toBeLessThan(1);
+  expect(r.train.rode).toBeGreaterThan(-2);
+  expect(Math.abs(r.train.camRode - r.train.rode)).toBeLessThan(1.5);
+});
+
+test('walking past scenery: no scrambling over knee-high clutter, no bouncing between colliders', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield;
+    const walk = (x, z, yaw, steps) => {
+      g.teleport(x, .3, z); for (let i = 0; i < 40; i++) g.step(1 / 60);
+      g.setCamera(yaw); g.hold.y = -1;
+      let scrambles = 0, climbing = false, flips = 0, dir = null, path = [[g.player.pos.x, g.player.pos.z]];
+      for (let i = 0; i < steps; i++) {
+        g.step(1 / 60);
+        if (g.player.climbing && !climbing) scrambles++;
+        climbing = !!g.player.climbing;
+        const p = g.player.pos; path.push([p.x, p.z]);
+        if (i > 2) {
+          const a = Math.atan2(p.x - path[i - 1][0], p.z - path[i - 1][1]);
+          if (dir !== null) { let d = a - dir; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; if (Math.abs(d) > 1.2) flips++; }
+          dir = a;
+        }
+      }
+      g.hold.y = 0; g.step(1 / 60);
+      return { scrambles, flips, travelled: +Math.hypot(g.player.pos.x - x, g.player.pos.z - z).toFixed(1), y: +g.player.pos.y.toFixed(2) };
+    };
+    // Two long, ordinary walks: across the square and past the market stalls.
+    return { square: walk(0, 6, 0, 420), market: walk(16.5, -16.5, Math.PI, 420) };
+  });
+  expect(errors).toEqual([]);
+  for (const lane of ['square', 'market']) {
+    expect(r[lane].scrambles, lane).toBe(0);
+    // One reversal is a cat turning round a bench; the jitter bug was five or six in a row.
+    expect(r[lane].flips, lane).toBeLessThanOrEqual(1);
+    expect(r[lane].travelled, lane).toBeGreaterThan(6);
+    expect(r[lane].y, lane).toBeLessThan(.6);
+  }
 });

@@ -15,8 +15,10 @@ function buildPlane(b, livery) {
   const { cy, floor, len, halfW } = PLANE, white = '#f3f1ea', stripe = livery, dark = '#2f3331', glass = '#3f4a46';
   const wallH = 2.1, wallY = floor - .1 + wallH / 2;
   // Belly and crown as half-tubes, flat floor, two side walls (right one split round the door).
-  b.add(GEO.cylinder, 0, cy - .55, 0, 1.45, len, 1.05, white, 0, 0, Math.PI / 2); b.add(GEO.cylinder, 0, cy - .85, 0, 1.46, len, .8, stripe, 0, 0, Math.PI / 2);
-  b.add(GEO.cylinder, 0, cy + 1.05, 0, halfW + .02, len, .95, white, 0, 0, Math.PI / 2);
+  // Two half-tubes, opening towards the cabin: a full tube would draw its own skin across the
+  // inside of the cabin, and any camera off the aisle centre would be looking at it.
+  b.add(GEO.halfTube, 0, cy - .55, 0, 1.45, len, 1.05, white, 0, 0, -Math.PI / 2); b.add(GEO.halfTube, 0, cy - .85, 0, 1.46, len, .8, stripe, 0, 0, -Math.PI / 2);
+  b.add(GEO.halfTube, 0, cy + 1.05, 0, halfW + .02, len, .95, white, 0, 0, Math.PI / 2);
   b.box(0, floor - .08, 0, len, .16, halfW * 2 - .1, '#6d7f8a'); b.box(0, floor + .005, 0, len - 1, .01, .7, '#4f7f96'); // floor and aisle carpet
   // Side walls are built round real window holes (a panel below, a panel above, pillars between)
   // so that from a seat you see the ground, the clouds and the next country go by.

@@ -58,6 +58,18 @@ let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh,
 let started = false, resting = false, modal = null, previousFocus = null, ready = false, storageWarning = false;
 let cameraYaw = Number.isFinite(saved?.cameraYaw) ? saved.cameraYaw : .56, cameraPitch = .34, cameraDistance = mobile ? 5 : 5.4;
 let cameraYawTarget = cameraYaw, cameraPitchTarget = cameraPitch, cameraDistanceTarget = cameraDistance, cameraInputTimer = 0;
+// One orbit rig for drag, touch and gamepad. Pitch runs from looking up at the sky to looking down
+// at the cat's paws; drag and stick are scaled by the same sensitivity setting, so the camera feels
+// the same whatever is in your hands.
+const PITCH_MIN = -1.32, PITCH_MAX = 1.4, DIST_MIN = 2.4, DIST_MAX = 14;
+const sensitivity = () => settings.sensitivity / .7;
+function orbit(yaw, pitch, timeout = 1.6) {
+  if (!yaw && !pitch) return;
+  cameraYawTarget -= yaw; cameraPitchTarget = clamp(cameraPitchTarget + pitch, PITCH_MIN, PITCH_MAX);
+  cameraInputTimer = timeout;
+}
+const orbitDrag = (dx, dy) => orbit(dx * .0034 * sensitivity(), dy * .0023 * sensitivity());
+const orbitStick = (rx, ry, dt) => orbit(rx * 2.6 * dt * sensitivity(), ry * 1.8 * dt * sensitivity());
 let time = 0, lastTime = 0, saveTimer = 0, hudTimer = 0, purrTimer = 0, toastTimer = 0, playTime = 0, slowTime = 0, frameAvg = 16;
 let jumpQueued = false, jumpHeld = false, touchClimb = false, touchRun = false, joyX = 0, joyY = 0, wallHint = null, wallPush = 0, scramble = false;
 let gamepadMoveX = 0, gamepadMoveY = 0, gamepadRun = false, gamepadClimb = false, prevPadButtons = [];
@@ -148,7 +160,7 @@ function init() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.4 : 1.5)); renderer.setSize(innerWidth, innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = settings.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, .08, 350);
+  camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, .06, 350);
   hemi = new THREE.HemisphereLight('#dfe6d8', '#7e8a68', 1.35); scene.add(hemi);
   sun = new THREE.DirectionalLight('#ffe6c0', 2.2); sun.position.set(-35, 60, 25); sun.castShadow = true;
   sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048); sun.shadow.camera.left = -36; sun.shadow.camera.right = 36; sun.shadow.camera.top = 36; sun.shadow.camera.bottom = -36; sun.shadow.camera.near = 1; sun.shadow.camera.far = 150; sun.shadow.bias = -.0003; sun.shadow.normalBias = .03; sun.shadow.radius = 3;
@@ -167,9 +179,24 @@ function init() {
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
     player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); const ride = train.update(dt, player.pos, !!player.support?.train); if (player.support?.train && !flight.active) player.pos.z += ride; lifts.sync(); const lifted = lifts.update(dt, player.pos, player.support); if (lifted) player.pos.y += lifted; vehicles.sync(); carry(vehicles.update(dt, player.pos, player.support)); if (flight.active) { flight.update(dt); if (flight.active && flight.plane) { player.pos.copy(flight.seat); player.heading = flight.plane.group.rotation.y + Math.PI / 2; } } else { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; } planes.sync(); time += dt; }, get fun() { return fun; }, get ducks() { return ducks; }, get train() { return train; }, get planes() { return planes; }, get vehicles() { return vehicles; }, flight, get country() { return countryId; }, travel, offerFlight, board: id => beginFlight(id), wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
-    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance }),
+    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance, indoors: camIndoors, cameraPitch, cameraYaw }),
     wear, outfit, wardrobe, get lifts() { return lifts; }, get day() { return day; }, teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
-    setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = pitch; cameraDistance = cameraDistanceTarget = distance; },
+    // What the camera is doing right now: is it indoors, is the cat actually in view (nothing solid
+    // between the eye and the cat, and the eye inside nothing), and how far away is it.
+    cameraInfo: () => {
+      const eye = camera.position, head = player.pos.clone(); head.y += .3;
+      const blocked = physics.segmentHit(eye, head, .06, s => cameraOccluder(s, head.y)).t;
+      let inside = null;
+      for (const s of physics.query(eye.x, eye.z, .3)) {
+        if (s.sensor || s.person || s.shape === 'ellipsoid') continue;
+        if (eye.x > s.minX && eye.x < s.maxX && eye.z > s.minZ && eye.z < s.maxZ && eye.y > s.minY && eye.y < s.maxY) { inside = s.kind; break; }
+      }
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      return { indoors: camIndoors, blocked, inside, distance: eye.distanceTo(player.pos), lookUp: +Math.asin(clamp(fwd.y, -1, 1)).toFixed(2) };
+    },
+    // Settle the camera the way the render loop does, without waiting for frames (software WebGL is slow).
+    settle: (n = 90, dt = 1 / 60) => { for (let i = 0; i < n; i++) updateCamera(dt); },
+    setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = clamp(pitch, PITCH_MIN, PITCH_MAX); cameraDistance = cameraDistanceTarget = distance; cameraInputTimer = 1.6; },
     getSettings: () => ({ ...settings })
   };
 }
@@ -383,12 +410,11 @@ function createUI() {
   });
   canvas.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId) || modal) return; const p = pointers.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, 3.2, mobile ? 9 : 14); lastPinch = d; }
-    else { cameraYawTarget -= dx * .0048 * settings.sensitivity; cameraPitchTarget = clamp(cameraPitchTarget + dy * .0032 * settings.sensitivity, -.62, 1.4); }
-    cameraInputTimer = 1.6;
+    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, DIST_MIN, mobile ? 9 : DIST_MAX); lastPinch = d; cameraInputTimer = 1.6; }
+    else orbitDrag(dx, dy);
   });
   const release = e => pointers.delete(e.pointerId); canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release); canvas.addEventListener('lostpointercapture', release);
-  canvas.addEventListener('wheel', e => { e.preventDefault(); if (!modal) { cameraDistanceTarget = clamp(cameraDistanceTarget + e.deltaY * .006, 3.2, 14); cameraInputTimer = 1.6; } }, { passive: false });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); if (!modal) { cameraDistanceTarget = clamp(cameraDistanceTarget + e.deltaY * .006, DIST_MIN, DIST_MAX); cameraInputTimer = 1.6; } }, { passive: false });
   // Touch joystick, latching sprint, hold-to-climb, and jump.
   const joy = $('joystick'); let joyPointer = null;
   const moveJoy = e => { const rect = joy.getBoundingClientRect(), max = rect.width * .36; let dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2; const d = Math.hypot(dx, dy); if (d > max) { dx *= max / d; dy *= max / d; } const n = Math.min(1, d / max), dead = .1; const shaped = n < dead ? 0 : (n - dead) / (1 - dead); joyX = d ? dx / d * shaped : 0; joyY = d ? dy / d * shaped : 0; $('joystick-knob').style.transform = `translate(${dx}px,${dy}px)`; joy.classList.toggle('engaged', n > dead); };
@@ -526,7 +552,7 @@ function pollGamepad(dt) {
   const dead = v => Math.abs(v) < .16 ? 0 : (Math.abs(v) - .16) / .84 * Math.sign(v);
   gamepadMoveX = dead(pad.axes[0] || 0); gamepadMoveY = dead(pad.axes[1] || 0);
   const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
-  if (rx || ry) { cameraYawTarget -= rx * 2.6 * dt; cameraPitchTarget = clamp(cameraPitchTarget + ry * 1.8 * dt, -.62, 1.4); cameraInputTimer = 1.6; }
+  orbitStick(rx, ry, dt);
   const b = i => !!pad.buttons[i]?.pressed;
   if (b(10) && !prevPadButtons[10]) touchRun = !touchRun;
   gamepadRun = b(6) || b(7); gamepadClimb = b(1) || b(5) || b(4);
@@ -545,51 +571,129 @@ function rayBox(origin, dir, s, pad = .2) {
   }
   return tmin > 0.02 ? tmin : Infinity;
 }
+// ---- the camera ------------------------------------------------------------------------------
+// One orbit rig for the whole game. The eye is placed on a sphere around the cat, then a single
+// swept-sphere test against *every* nearby shape (boxes, cylinders, pitched roofs, carriages,
+// cabins, floors above) pulls it in until nothing is between it and the cat. Indoors the rig
+// shortens up and looks slightly higher, so a wall behind the cat never hides it; outside it
+// relaxes back out slowly. Looking up is a real thing here: pitch runs to -1.32, and when the eye
+// is lifted off the ground to keep it out of the grass, the look-at point rises with it.
+const CAM = { radius: .15, min: 1.15, interior: 3.4, interiorCeiling: 3.05 };
+const camEye = new THREE.Vector3(), camRay = new THREE.Vector3(), camDir = new THREE.Vector3(), camLook = new THREE.Vector3(), camLast = new THREE.Vector3(), camDelta = new THREE.Vector3();
+let camIndoors = false;
+
+// What may hide the cat from the eye. Low, walk-over things (kerbs, benches, fountain rims) are
+// lifted over further down instead of yanking the camera in; foliage, people and thin posts never
+// block. Anything tall blocks, and so does a surface overhead — a ceiling, an awning, the deck of
+// a footbridge, the floor of the storey above.
+function cameraOccluder(s, eyeY) {
+  if (s.sensor || s.person || s.shape === 'ellipsoid' || s.shape === 'roof') return false;
+  if (s.shape === 'cylinder' && s.r < .16) return false;
+  if (s.maxY - s.minY >= .7) return true;
+  return s.minY > eyeY + .06;
+}
+
 function updateCamera(dt, instant = false) {
   if (hold.camera) { camera.position.set(...hold.camera.pos); camera.lookAt(...hold.camera.at); return; }
   if (flight.active && flight.camPos) { camera.position.copy(flight.cam.pos); camera.lookAt(flight.cam.at); return; }
   cameraYaw = THREE.MathUtils.damp(cameraYaw, cameraYawTarget, 12, dt);
   cameraPitch = THREE.MathUtils.damp(cameraPitch, cameraPitchTarget, 10, dt);
-  cameraDistance = THREE.MathUtils.damp(cameraDistance, cameraDistanceTarget * (1 + player.runBlend * .14), 6, dt);
+  cameraDistance = THREE.MathUtils.damp(cameraDistance, cameraDistanceTarget, 6, dt);
   cameraInputTimer = Math.max(0, cameraInputTimer - dt);
   const isWelcome = !started, narrow = innerWidth < 700 || innerWidth < innerHeight;
   const rightX = Math.cos(cameraYaw), rightZ = -Math.sin(cameraYaw);
+  // What the camera orbits around: the cat, with a small lead from its own motion.
   const desiredTarget = tempVec.copy(player.pos);
   desiredTarget.y += isWelcome ? .9 : .38 + (player.climbing ? .25 : 0);
-  if (!isWelcome) { desiredTarget.x += player.vx * .1; desiredTarget.z += player.vz * .1; desiredTarget.y += clamp(player.vy, -4, 4) * .03; }
+  if (!isWelcome) { desiredTarget.x += player.vx * .08; desiredTarget.z += player.vz * .08; desiredTarget.y += clamp(player.vy, -4, 4) * .02; }
   if (isWelcome) { const offset = narrow ? 0 : -3.4; desiredTarget.x += rightX * offset; desiredTarget.z += rightZ * offset; }
-  if (instant) cameraTarget.copy(desiredTarget); else cameraTarget.lerp(desiredTarget, 1 - Math.exp(-10 * dt));
-  const pitch = isWelcome ? .3 : cameraPitch, distance = isWelcome ? (narrow ? 9 : 11) : cameraDistance;
-  cameraDesired.set(Math.sin(cameraYaw) * Math.cos(pitch) * distance, Math.sin(pitch) * distance, Math.cos(cameraYaw) * Math.cos(pitch) * distance);
-  let allowed = 1, needY = -Infinity;
-  if (!isWelcome) {
-    for (const s of physics.query(player.pos.x, player.pos.z, distance + 1.5)) {
-      if (s.shape === 'ellipsoid' || s.person || (s.shape === 'cylinder' && s.r < .2) || s.maxY - s.minY < .3) continue;
-      if (s.shape === 'roof') {
-        // Pitched roofs are not boxes: rather than yanking the camera in whenever it crosses the
-        // roof's bounding volume, lift it just enough that the line of sight clears the slopes.
-        for (let k = 1; k <= 6; k++) { const t = k / 6, hx = cameraTarget.x + cameraDesired.x * t, hz = cameraTarget.z + cameraDesired.z * t, hy = surfaceHeight(s, hx, hz); if (Number.isFinite(hy) && cameraTarget.y + cameraDesired.y * t < hy + .35) needY = Math.max(needY, cameraTarget.y + (hy + .35 - cameraTarget.y) / t); }
-        continue;
+  // Riding something that moves: the cat has already been carried this frame, so follow the whole
+  // of that movement before smoothing. A boat, train, lift or balloon then never drags the view.
+  const riding = !isWelcome && !!player.support && !!(player.support.vehicle || player.support.train || player.support.lift || player.support.plane);
+  if (instant) { cameraTarget.copy(desiredTarget); camLast.copy(player.pos); }
+  else {
+    camDelta.copy(player.pos).sub(camLast);
+    if (riding && camDelta.lengthSq() < 4) cameraTarget.add(camDelta);
+    cameraTarget.lerp(desiredTarget, 1 - Math.exp(-(riding ? 30 : 10) * dt));
+  }
+  camLast.copy(player.pos);
+  const pitch = isWelcome ? .3 : cameraPitch;
+  let distance = isWelcome ? (narrow ? 9 : 11) : cameraDistance * (1 + player.runBlend * .14);
+  // Indoors: a low ceiling means a room, a carriage or a cabin, where a long lens is just a wall.
+  const headroom = isWelcome ? Infinity : physics.headroomAbove(player.pos.x, player.pos.z, player.pos.y, .35);
+  camIndoors = headroom < CAM.interiorCeiling;
+  if (camIndoors) {
+    // Shorten only as much as the ceiling demands: a long carriage still gives a long view down
+    // the aisle, a cabin or a small room gives a short one. The cast below trims whatever is left.
+    const vertical = Math.max(.9, headroom - .42) / Math.max(.12, Math.abs(Math.sin(pitch)));
+    distance = Math.min(distance, Math.max(1.9, Math.min(CAM.interior, vertical)));
+  }
+  // 1. The swept sphere: everything solid between the cat and where the eye wants to be. The
+  // sweep radius is a little smaller than the cat, so a cat pressed against a wall still has one
+  // clear direction (straight out from it) to look from.
+  const cast = (yaw, p) => {
+    camDir.set(Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p));
+    camEye.copy(cameraTarget).addScaledVector(camDir, distance);
+    const hit = physics.segmentHit(cameraTarget, camEye, CAM.radius, s => cameraOccluder(s, cameraTarget.y));
+    const t = hit.t < 1 ? Math.max(0, hit.t - .03 / Math.max(1, distance)) : 1;
+    return { yaw, pitch: p, t, dist: distance * t };
+  };
+  let shot = cast(cameraYaw, pitch), needY = -Infinity;
+  // The cat can be standing with its nose against something. Rather than jam the eye against its
+  // back (a screenful of fur), look for the nearest direction that actually has room: a little to
+  // the side, a little higher, over the shoulder. The requested angle is strongly preferred, so
+  // this only happens where the view would otherwise be useless.
+  if (shot.dist < CAM.min && !isWelcome) {
+    let bestScore = shot.dist;
+    const requested = shot;
+    for (const dy of [0, .45, -.45, .9, -.9, 1.4, -1.4]) {
+      for (const dp of [0, .35, .8, 1.15]) {
+        if (!dy && !dp) continue;
+        const alt = cast(cameraYaw + dy, Math.min(1.32, Math.max(PITCH_MIN, pitch + dp)));
+        if (alt.dist < requested.dist * 1.3) continue;
+        const score = alt.dist / (1 + Math.abs(dy) * 1.5 + Math.abs(dp) * 1.1);
+        if (score > bestScore) { bestScore = score; shot = alt; }
       }
-      const t = rayBox(cameraTarget, cameraDesired, s);
-      if (t >= 1) continue;
-      // Tall things block the camera (walls, roofs, crates, fountain columns, trunks) and pull it closer;
-      // low things (fountain rims, pond stones, benches) just lift the camera so it can see over them.
-      if (s.maxY - s.minY >= .7) allowed = Math.min(allowed, t);
-      else if (t > .05) needY = Math.max(needY, cameraTarget.y + (s.maxY + .22 - cameraTarget.y) / t);
     }
   }
-  if (allowed < 1) cameraDesired.multiplyScalar(Math.max(.18, allowed - .3 / distance));
-  cameraDesired.add(cameraTarget);
-  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * 1.1);
-  // Never let the camera sink into the ground, a pond, a fountain rim, or a bench top.
+  camDir.set(Math.sin(shot.yaw) * Math.cos(shot.pitch), Math.sin(shot.pitch), Math.cos(shot.yaw) * Math.cos(shot.pitch));
+  const allowed = shot.t;
   if (!isWelcome) {
-    const floor = physics.highest(cameraDesired.x, cameraDesired.z, cameraDesired.y);
-    const minY = Math.max(0, floor) + .42;
-    if (cameraDesired.y < minY) cameraDesired.y = minY;
+    // 2. Two things are not walls: pitched roofs and low scenery. Rather than pulling the eye in,
+    // lift it just enough that the line of sight clears them — but never indoors, where "seeing over
+    // the roof" would mean leaving the room through the ceiling.
+    for (const s of camIndoors ? [] : physics.query(player.pos.x, player.pos.z, distance + 1.5)) {
+      if (s.sensor || s.person || s.shape === 'ellipsoid') continue;
+      if (s.shape !== 'roof' && cameraOccluder(s, cameraTarget.y)) continue;
+      if (s.shape !== 'roof' && (s.shape === 'cylinder' && s.r < .16)) continue;
+      if (s.shape === 'roof') {
+        for (let k = 1; k <= 6; k++) { const q = k / 6, hx = cameraTarget.x + camDir.x * distance * q, hz = cameraTarget.z + camDir.z * distance * q, hy = surfaceHeight(s, hx, hz); if (Number.isFinite(hy) && cameraTarget.y + camDir.y * distance * q < hy + .35) needY = Math.max(needY, cameraTarget.y + (hy + .35 - cameraTarget.y) / q); }
+        continue;
+      }
+      const t = rayBox(cameraTarget, camRay.copy(camDir).multiplyScalar(distance), s);
+      if (t < 1 && t > .05) needY = Math.max(needY, cameraTarget.y + (s.maxY + .22 - cameraTarget.y) / t);
+    }
   }
-  if (instant) camera.position.copy(cameraDesired); else camera.position.lerp(cameraDesired, 1 - Math.exp(-(allowed < 1 ? 16 : 9) * dt));
-  camera.lookAt(cameraTarget);
+  cameraDesired.copy(camDir).multiplyScalar(Math.max(shot.dist, CAM.min * .6)).add(cameraTarget);
+  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * 1.1);
+  // 3. Never let the eye sink into the ground, a pond, a bench top — and when that lift happens
+  // while looking up, carry the look-at point up with it, so "look at the sky" really looks up.
+  camLook.copy(cameraTarget);
+  if (!isWelcome) {
+    const floor = Math.max(0, physics.highest(cameraDesired.x, cameraDesired.z, cameraDesired.y));
+    const minY = floor + (cameraPitch < -.1 ? .22 : .42);
+    if (cameraDesired.y < minY) {
+      const lift = minY - cameraDesired.y;
+      cameraDesired.y = minY;
+      camLook.y += Math.min(3.4, lift * .92);
+    }
+  }
+  // Keep the eye under the ceiling. Rooms, carriages and cabins have a real roof — and in a plane
+  // the inner skin of the fuselage hangs lower than its collider, so give it room.
+  if (camIndoors) cameraDesired.y = Math.min(cameraDesired.y, player.pos.y + headroom - .75);
+  if (instant) camera.position.copy(cameraDesired);
+  else camera.position.lerp(cameraDesired, 1 - Math.exp(-(riding ? 30 : allowed < 1 ? 20 : camIndoors ? 12 : 9) * dt));
+  camera.lookAt(camLook);
   const targetFov = isWelcome ? 46 : 50 + player.runBlend * 6;
   if (Math.abs(camera.fov - targetFov) > .02) { camera.fov = THREE.MathUtils.damp(camera.fov, targetFov, 5, dt); camera.updateProjectionMatrix(); }
 }

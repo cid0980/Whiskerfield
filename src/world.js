@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments, makeRailway, makeAirport, railTrack } from './places.js';
+import { makeLake, makeCoast, makeSea, makeBalloonField } from './shore.js';
 import { hollow, doorway, furnishHouse, FLOORS, PLACE_NAMES, KITS } from './rooms.js';
 
 export const CHUNK = 72;
@@ -141,8 +142,11 @@ const mod = (a, n) => ((a % n) + n) % n;
 // Railway lines run north–south every six chunks; airports sit two chunks east of them, every six chunks north–south.
 export const isRailColumn = cx => mod(cx, 6) === 1;
 export const railX = cx => cx * CHUNK - 9;
-export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0;
-export const isStationChunk = (cx, cz) => isRailColumn(cx) && mod(cz, 2) === 0;
+// The town ends at the coast to the north: one row of seafront chunks, then open water.
+export const COAST_CZ = -3, SHORE_Z = COAST_CZ * CHUNK - 26, SEA_R = 1e4;
+export const isSeaChunk = cz => cz < COAST_CZ, isCoastChunk = cz => cz === COAST_CZ;
+export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0 && cz > COAST_CZ;
+export const isStationChunk = (cx, cz) => isRailColumn(cx) && mod(cz, 2) === 0 && cz > COAST_CZ;
 
 export class World {
   constructor(scene, seedText, countryId = 'whiskerfield') {
@@ -263,22 +267,33 @@ export class World {
   createChunk(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
     const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [], lifts: [], lamps: [] };
-    const ox = cx * CHUNK, oz = cz * CHUNK;
+    const ox = cx * CHUNK, oz = cz * CHUNK, theme = this.theme(cx, cz), sea = theme === 'sea', coast = theme === 'coast' || theme === 'rail-coast';
+    if (sea) { // open water: nothing but the sea, and the railway's viaduct where a line crosses it
+      makeSea(this, c, ox, oz, rng, isRailColumn(cx) ? railX(cx) : 0);
+      if (isRailColumn(cx)) railTrack(this, c, railX(cx), oz, rng, false, true);
+      this.autoColliders(c, c.batch.items); this.buildExtras(c);
+      const mesh = new THREE.Mesh(c.batch.geometry(), this.material); mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = `sea-${key}`;
+      c.mesh = mesh; c.batch = null; this.chunks.set(key, c); this.scene.add(mesh); return;
+    }
     const grass = country.grass[hash(cx, cz, this.seed, 4) % 4];
-    c.batch.box(ox, -.2, oz, CHUNK + .05, .4, CHUNK + .05, grass);
+    // On the seafront the land stops a little north of the middle; the rest is beach and water.
+    const landZ0 = coast ? oz - 8 : oz - CHUNK / 2 - .025, landZ1 = oz + CHUNK / 2 + .025, landM = (landZ0 + landZ1) / 2, landL = landZ1 - landZ0;
+    c.batch.box(ox, -.2, landM, CHUNK + .05, .4, landL, grass);
+    if (coast) makeCoast(this, c, ox, oz, rng, key, SHORE_Z);
     // Neighborhood streets are continuous across chunk boundaries.
     const road = country.road, pavement = country.pavement;
     for (const s of [-1, 1]) {
-      c.batch.box(ox + s * 32.5, .005, oz, 7, .08, CHUNK, road);
-      c.batch.box(ox, .006, oz + s * 32.5, CHUNK, .08, 7, road);
+      c.batch.box(ox + s * 32.5, .005, landM, 7, .08, landL, road);
+      if (!(coast && s < 0)) c.batch.box(ox, .006, oz + s * 32.5, CHUNK, .08, 7, road);
       for (const edge of [-1, 1]) {
-        c.batch.box(ox + s * 32.5 + edge * 4.05, .055, oz, 1.05, .15, CHUNK - 9, pavement);
-        c.batch.box(ox, .056, oz + s * 32.5 + edge * 4.05, CHUNK - 9, .15, 1.05, pavement);
+        c.batch.box(ox + s * 32.5 + edge * 4.05, .055, coast ? landM + 2.5 : oz, 1.05, .15, coast ? landL - 14 : CHUNK - 9, pavement);
+        if (!(coast && s < 0)) c.batch.box(ox, .056, oz + s * 32.5 + edge * 4.05, CHUNK - 9, .15, 1.05, pavement);
       }
     }
-    // A footpath crosses the middle of every block, linking the pavements.
-    c.batch.box(ox, .015, oz, 3, .07, 58, '#b3a88f');
-    c.batch.box(ox, .016, oz, 58, .07, 3, '#b3a88f');
+    const lake = theme === 'lake';
+    // A footpath crosses the middle of every block, linking the pavements (the lake has its own ring).
+    if (!lake) { c.batch.box(ox, .015, coast ? landM + 2 : oz, 3, .07, coast ? landL - 13 : 58, '#b3a88f'); c.batch.box(ox, .016, oz, 58, .07, 3, '#b3a88f'); }
+    if (lake) makeLake(this, c, ox, oz, rng, key);
     this.cars(c, rng);
     // A few sun-bleached cobbles, rather than a repeating road texture.
     for (let i = 0; i < 100; i++) {
@@ -290,12 +305,14 @@ export class World {
     const airport = isAirportChunk(cx, cz);
     if (isRailColumn(cx)) railTrack(this, c, railX(cx), oz, rng, isStationChunk(cx, cz));
     if (airport) makeAirport(this, c, ox, oz, rng, key);
-    for (let i = 0; i < 4 && !airport; i++) {
+    for (let i = 0; i < 4 && !airport && !lake; i++) {
       const lx = i % 2 ? 16.5 : -16.5, lz = i < 2 ? -16.5 : 16.5;
+      if (coast && i < 2) continue; // the northern lots are under the sea
       const x = ox + lx, z = oz + lz;
       const r = random(hash(cx * 4 + i, cz, this.seed, 901));
       const lot = this.lotKind(cx, cz, i, r), id = `${key}:${i}`;
       if (lot === 'park') this.makePark(c, x, z, r, i);
+      else if (lot === 'balloon') makeBalloonField(this, c, x, z, r, id);
       else if (lot === 'market') makeMarket(this, c, x, z, r, id);
       else if (lot === 'works') makeFactory(this, c, x, z, r, id);
       else if (lot === 'depot') makeWarehouse(this, c, x, z, r, id);
@@ -310,13 +327,13 @@ export class World {
     }
     // Street trees, lanterns, and small places to pause.
     for (const s of [-1, 1]) {
-      if (!airport) { this.tree(c, ox + s * 27.4, oz + 5, rng, .65); this.tree(c, ox - 7, oz + s * 27.4, rng, .65); }
-      this.lamp(c, ox + s * 27.2, oz - 27.2);
-      if (rng() > .35 && !airport) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
+      if (!airport && !lake) { this.tree(c, ox + s * 27.4, oz + 5, rng, .65); if (!(coast && s < 0)) this.tree(c, ox - 7, oz + s * 27.4, rng, .65); }
+      if (!coast) this.lamp(c, ox + s * 27.2, oz - 27.2);
+      if (rng() > .35 && !airport && !lake) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
     }
     if (cx === 0 && cz === 0) {
       this.makeSpawn(c, rng);
-    } else if (rng() > .65 && !country.snow && !airport) {
+    } else if (rng() > .65 && !country.snow && !airport && !lake) {
       this.bunting(c, ox - 12, oz, ox + 12, oz, 6.5);
     }
     this.autoColliders(c, c.batch.items);
@@ -328,8 +345,11 @@ export class World {
 
   // Every chunk has a character; the character decides what its four lots become.
   theme(cx, cz) {
+    if (isSeaChunk(cz)) return 'sea';
+    if (isCoastChunk(cz)) return isRailColumn(cx) ? 'rail-coast' : 'coast';
     if (cx === 0 && cz === 0) return 'square';
     if (isAirportChunk(cx, cz)) return 'airport';
+    if (!isRailColumn(cx) && ((cx === -1 && cz === 1) || hash(cx, cz, this.seed, 78) % 9 === 0)) return 'lake';
     const h = hash(cx, cz, this.seed, 77) % 100;
     const t = h < 34 ? 'lanes' : h < 49 ? 'market' : h < 62 ? 'works' : h < 76 ? 'towers' : h < 88 ? 'play' : 'allot';
     return isRailColumn(cx) ? 'rail-' + t : t;
@@ -337,18 +357,20 @@ export class World {
   lotKind(cx, cz, i, r) {
     let t = this.theme(cx, cz); const v = hash(cx * 4 + i, cz, this.seed, 905) % 100;
     if (t === 'airport') return 'airport';
+    if (cx === 0 && cz === -1 && i === 3) return 'balloon';
     if (t.startsWith('rail-')) {
       // The two western lots carry the line: a station every other chunk, sidings or a crossing otherwise.
       if (i === 0) return isStationChunk(cx, cz) ? 'station' : 'rail';
       if (i === 2) return 'rail';
-      t = t.slice(5); if (t === 'towers' || t === 'works') t = 'lanes';
+      t = t.slice(5); if (t === 'towers' || t === 'works' || t === 'coast') t = 'lanes';
     }
+    if (t === 'coast') t = v < 50 ? 'market' : 'lanes';
     if (t === 'square') return ['building', 'market', 'cafe', 'park'][i];
     if (t === 'market') return ['market', 'cafe', 'shop', v < 50 ? 'park' : 'home'][i];
     if (t === 'works') return ['works', 'depot', v < 40 ? 'park' : 'building', 'building'][i];
     if (t === 'towers') return ['tower', 'spire', 'tower', v < 60 ? 'park' : 'building'][i];
-    if (t === 'play') return ['play', 'park', v < 50 ? 'home' : 'building', 'building'][i];
-    if (t === 'allot') return ['allotments', 'home', 'park', 'building'][i];
+    if (t === 'play') return ['play', 'park', 'balloon', 'building'][i];
+    if (t === 'allot') return ['allotments', 'home', 'park', v < 35 ? 'balloon' : 'building'][i];
     if (v < 20) return 'park';
     if (v < 30) return 'home';
     if (v < 34) return 'cafe';
@@ -844,7 +866,7 @@ export class World {
       for(let i=0;i<count&&u<23;i++){
         const alongZ=axis==='x';
         const x=alongZ?ox+s*30.15:ox+u,z=alongZ?oz+u:oz+s*30.15;
-        this.car(c,x,z,alongZ,palette[Math.floor(rng()*palette.length)],rng);
+        if(!(isCoastChunk(c.cz)&&z<oz-5)) this.car(c,x,z,alongZ,palette[Math.floor(rng()*palette.length)],rng); // nothing parks on the beach
         u+=5.2+rng()*7;
       }
     }
@@ -906,7 +928,8 @@ export class World {
     }
   }
 
-  inWater(x,z){return this.water.find(w=>(x-w.x)**2+(z-w.z)**2<w.r*w.r);}
+  // Ponds and the lake are circles; the sea is one enormous circle whose edge is the shoreline.
+  inWater(x,z){ if (z < SHORE_Z) return { x, z: SHORE_Z - SEA_R, r: SEA_R, sea: true }; return this.water.find(w=>(x-w.x)**2+(z-w.z)**2<w.r*w.r); }
   // Height of the walkable ground surface: pavements, roads, footpaths, park lawns and paths, the square.
   // Keeps paws on top of the paving instead of inside it.
   groundHeight(x,z){

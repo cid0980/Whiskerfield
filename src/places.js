@@ -506,8 +506,9 @@ export function makeAllotments(W, c, x, z, r, id) {
 
 // Ballast, sleepers and rails for one chunk's length of track at x, plus boards where the roads
 // and the footpath cross it.
-export function railTrack(W, c, x, oz, rng, station = false) {
+export function railTrack(W, c, x, oz, rng, station = false, viaduct = false) {
   const b = c.batch, L = 72;
+  if (viaduct) { b.box(x, .0, oz, 3.8, .3, L + .05, '#9a9a94'); for (let k = -35.6; k <= 35.6; k += .8) b.box(x, .18, oz + k, 2.3, .1, .28, '#6a5540'); for (const s of [-1, 1]) { b.box(x + s * .72, .28, oz, .09, .14, L + .05, '#6b6a66'); b.box(x + s * .72, .36, oz, .13, .03, L + .05, '#9a9a94'); b.box(x + s * 1.95, .5, oz, .1, .7, L + .05, '#8a8f87'); } return; }
   b.box(x, .06, oz, 3.4, .12, L + .05, '#a39c88');
   for (let k = -35.6; k <= 35.6; k += .8) b.box(x, .13, oz + k, 2.3, .1, .28, '#6a5540');
   for (const s of [-1, 1]) { b.box(x + s * .72, .23, oz, .09, .14, L + .05, '#6b6a66'); b.box(x + s * .72, .31, oz, .13, .03, L + .05, '#9a9a94'); }

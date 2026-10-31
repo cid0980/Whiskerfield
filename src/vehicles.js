@@ -31,7 +31,7 @@ export class Vehicles {
   buildBalloon(spec) {
     const b = new Batch(), colors = [['#d9544f', '#f1e8d2'], ['#4f7f96', '#e9c04b'], ['#6f9a4f', '#f1e8d2'], ['#f08a3c', '#4f7f96']][Math.abs(Math.round(spec.x / 7 + spec.z / 11)) % 4];
     // Basket: floor, four wicker walls, a padded rim.
-    b.box(0, .42, 0, 1.5, .16, 1.5, '#8c6f55'); b.box(0, .5, 0, 1.3, .02, 1.3, '#b08a62');
+    b.box(0, .22, 0, 1.5, .44, 1.5, '#8c6f55'); b.box(0, .5, 0, 1.3, .02, 1.3, '#b08a62');
     for (const [wx, wz, ww, wd] of [[.7, 0, .1, 1.5], [-.7, 0, .1, 1.5], [0, .7, 1.5, .1], [0, -.7, 1.5, .1]]) { b.box(wx, .78, wz, ww, .56, wd, '#a07a52'); b.box(wx, 1.07, wz, ww + .06, .06, wd + .06, '#6b4f36'); }
     for (const [wx, wz] of [[.72, .72], [-.72, .72], [.72, -.72], [-.72, -.72]]) b.box(wx, .78, wz, .1, .6, .1, '#6b4f36');
     // Burner and frame, ropes to the envelope.
@@ -50,7 +50,7 @@ export class Vehicles {
     // The tether: a line from the basket to the anchor, shown while moored.
     const tether = new THREE.Mesh(new THREE.CylinderGeometry(.02, .02, 1, 5), new THREE.MeshLambertMaterial({ color: '#6b4f36' })); this.scene.add(tether);
     const v = { kind: 'balloon', spec, group, tether, x: spec.x, y: 0, z: spec.z, state: 'moored', timer: 0, aboard: 0, home: true, wind: 0, high: 36, until: 0, sway: Math.random() * TAU, dx: 0, dy: 0, dz: 0, landedAt: 0 };
-    v.solids = [this.solid(v, 0, .42, 0, 1.5, .16, 1.5, 'balloon', false), this.solid(v, .7, .78, 0, .1, .62, 1.5, 'basketwall', true), this.solid(v, -.7, .78, 0, .1, .62, 1.5, 'basketwall', true), this.solid(v, 0, .78, .7, 1.5, .62, .1, 'basketwall', true), this.solid(v, 0, .78, -.7, 1.5, .62, .1, 'basketwall', true)];
+    v.solids = [this.solid(v, 0, .25, 0, 1.5, .5, 1.5, 'balloon', false), this.solid(v, .7, .78, 0, .1, .62, 1.5, 'basketwall', true), this.solid(v, -.7, .78, 0, .1, .62, 1.5, 'basketwall', true), this.solid(v, 0, .78, .7, 1.5, .62, .1, 'basketwall', true), this.solid(v, 0, .78, -.7, 1.5, .62, .1, 'basketwall', true)];
     this.physics.dynamic.push(...v.solids); this.place(v);
     return v;
   }
@@ -58,8 +58,8 @@ export class Vehicles {
   buildBoat(spec) {
     const b = new Batch(), hull = ['#4f7f96', '#c9524a', '#6f9a4f', '#e9c04b'][Math.abs(Math.round(spec.x / 5 + spec.z / 3)) % 4];
     // Bow toward -z. Hull, bow wedge, gunwales, deck, a thwart, an outboard, a lamp on a short mast.
-    b.box(0, .12, .3, 1.5, .44, 2.6, hull); b.add(GEO.tapered, 0, .12, -1.55, 1.5, .44, 1.0, hull, Math.PI / 2, 0, 0);
-    b.box(0, .32, .3, 1.2, .03, 2.5, '#c7a97b'); b.add(GEO.tapered, 0, .32, -1.5, 1.2, .03, .9, '#c7a97b', Math.PI / 2, 0, 0);
+    b.box(0, .12, .3, 1.5, .44, 2.6, hull); b.add(GEO.tapered, 0, .12, -1.5, .75, 1.0, .22, hull, -Math.PI / 2, 0, 0);
+    b.box(0, .32, .3, 1.2, .03, 2.5, '#c7a97b'); b.add(GEO.tapered, 0, .33, -1.45, .6, .9, .015, '#c7a97b', -Math.PI / 2, 0, 0);
     for (const s of [-1, 1]) b.box(s * .72, .38, .3, .08, .1, 2.6, '#f1e8d2');
     b.box(0, .38, 1.55, 1.5, .1, .1, '#f1e8d2');
     b.box(0, .5, .4, 1.3, .08, .34, '#a98a63'); b.box(0, .5, -.5, 1.1, .08, .3, '#a98a63');
@@ -89,6 +89,16 @@ export class Vehicles {
   remove(v) { this.scene.remove(v.group); if (v.tether) this.scene.remove(v.tether); const d = this.physics.dynamic; for (const s of v.solids) { const i = d.indexOf(s); if (i >= 0) d.splice(i, 1); } }
   dispose() { for (const v of this.list.values()) this.remove(v); this.list.clear(); }
 
+  // Is there anything but water at this point (a pier, a jetty, rocks, another boat)?
+  blocked(v, x, z) {
+    if (!this.world.inWater(x, z)) return true;
+    for (const s of this.physics.query(x, z, .1)) {
+      if (s.vehicle === v || s.sensor || s.shape === 'roof' || s.minY > .9 || s.maxY < -.6) continue;
+      if (s.shape === 'cylinder') { if ((x - s.x) ** 2 + (z - s.z) ** 2 < s.r * s.r) return true; }
+      else if (x > s.minX && x < s.maxX && z > s.minZ && z < s.maxZ) return true;
+    }
+    return false;
+  }
   // Called with the stick before the cat moves: a cat on a boat pushing toward open water steers
   // the boat instead of walking. Returns true when the input was taken by the boat.
   control(support, ix, iz, yaw) {
@@ -96,7 +106,7 @@ export class Vehicles {
     const amount = Math.hypot(ix, iz); if (amount < .3) return false;
     const co = Math.cos(yaw), si = Math.sin(yaw), dx = (ix * co + iz * si) / amount, dz = (-ix * si + iz * co) / amount;
     const ax = v.x + dx * (BOAT.bow + 1.2), az = v.z + dz * (BOAT.bow + 1.2);
-    if (!this.world.inWater(ax, az) || this.physics.support(ax, az, .9).solid) return false; // land or a pier that way: walk
+    if (this.blocked(v, ax, az)) return false; // land or a pier that way: walk
     v.target = Math.atan2(-dx, -dz); v.throttle = 1; v.home = false;
     if (!v.steered) { v.steered = true; this.onEvent?.('boat-go', v); }
     return true;
@@ -145,7 +155,7 @@ export class Vehicles {
   }
   sailBoat(v, dt, cat, aboard) {
     const ox = v.x, oz = v.z, oh = v.heading, far = Math.hypot(cat.x - v.x, cat.z - v.z);
-    if (!aboard) v.throttle = 0;
+    v.aboardT = aboard ? (v.aboardT || 0) + dt : 0; if (!aboard) v.throttle = 0;
     // Heading eases round to where the stick pointed; speed follows the throttle.
     let d = v.target - v.heading; d = ((d + Math.PI) % TAU + TAU) % TAU - Math.PI;
     const turn = Math.sign(d) * Math.min(Math.abs(d), BOAT.turn * dt * (v.speed > .2 ? 1 : .5)); v.heading += turn;
@@ -153,7 +163,7 @@ export class Vehicles {
     if (v.speed > .01) {
       const fx = -Math.sin(v.heading), fz = -Math.cos(v.heading), nx = v.x + fx * v.speed * dt, nz = v.z + fz * v.speed * dt;
       const bx = nx + fx * BOAT.bow, bz = nz + fz * BOAT.bow;
-      if (!this.world.inWater(bx, bz) || this.physics.support(bx, bz, .9).solid) { v.speed = 0; v.throttle = 0; if (aboard) this.onEvent?.('boat-shore', v); }
+      if (this.blocked(v, bx, bz)) { v.speed = 0; v.throttle = 0; if (aboard) this.onEvent?.('boat-shore', v); }
       else { v.x = nx; v.z = nz; }
     }
     if (!aboard && !v.home && far > 160) { v.x = v.spec.x; v.z = v.spec.z; v.heading = v.target = v.spec.heading; v.speed = 0; v.home = true; v.steered = false; }

@@ -2,7 +2,7 @@
 // line, waits, whistles, and goes on north. Its carriages are solid and carry whatever stands
 // on them, so a cat on the roof goes wherever the train goes.
 import * as THREE from 'three';
-import { Batch, CHUNK, isRailColumn, railX, isStationChunk } from './world.js';
+import { Batch, CHUNK, COAST_CZ, isRailColumn, railX, isStationChunk } from './world.js';
 import { buildTrain } from './places.js';
 
 const MAX_SPEED = 11, ACCEL = 1.6, BRAKE = 2.2, DWELL = 9;
@@ -22,7 +22,7 @@ export class Train {
     this.column = null; this.x = 0; this.z = 0; this.speed = 0; this.state = 'stop'; this.timer = 3; this.next = null; this.lastDelta = 0; this.visible = false;
   }
   // Station platform centres along a line: every even chunk, lot 0 (z = cz*72 - 16.5).
-  stationsNear(z) { const out = []; const cz0 = Math.round(z / CHUNK); for (let cz = cz0 - 6; cz <= cz0 + 6; cz++) if (mod(cz, 2) === 0) out.push(cz * CHUNK - 16.5); return out; }
+  stationsNear(z) { const out = []; const cz0 = Math.round(z / CHUNK); for (let cz = cz0 - 6; cz <= cz0 + 6; cz++) if (mod(cz, 2) === 0 && cz > COAST_CZ) out.push(cz * CHUNK - 16.5); if (!out.length) out.push((COAST_CZ + 1) * CHUNK - 16.5); return out; } // no stations out at sea: the first one ashore
   nearestColumn(x) { const cx = Math.round(x / CHUNK); let best = null; for (let k = cx - 6; k <= cx + 6; k++) if (isRailColumn(k) && (best === null || Math.abs(railX(k) - x) < Math.abs(railX(best) - x))) best = k; return best; }
   place(column, z) {
     this.column = column; this.x = railX(column);

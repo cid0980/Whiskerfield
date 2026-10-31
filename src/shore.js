@@ -63,7 +63,7 @@ export function makeCoast(W, c, ox, oz, rng, key, shoreZ) {
   b.cyl(ox, 6.35, pierZ1 + 1.8, 1.05, .7, '#3f4a46'); b.ball(ox, 6.35, pierZ1 + 1.8, .55, .4, .55, '#ffe9a6'); b.cyl(ox, 6.95, pierZ1 + 1.8, 1.25, .25, '#2f3331'); b.ball(ox, 7.25, pierZ1 + 1.8, .22, .3, .22, '#c9524a');
   W.cylinderSolid(c, ox, 3.2, pierZ1 + 1.8, 1.25, 6.4, { climbable: false, kind: 'lighthouse' });
   c.lamps.push({ x: ox, y: 6.4, z: pierZ1 + 1.8 });
-  boatSpec(c, `${key}:boat0`, ox - 3.0, pierZ0 - 8, Math.PI); boatSpec(c, `${key}:boat1`, ox + 3.0, pierZ0 - 13, Math.PI);
+  boatSpec(c, `${key}:boat0`, ox - 3.0, shoreZ - 3.6, Math.PI); boatSpec(c, `${key}:boat1`, ox + 3.0, shoreZ - 10, Math.PI);
   // A buoy or two, and the sign that names the place.
   for (const [bx, bz] of [[ox - 22, shoreZ - 14], [ox + 26, shoreZ - 9]]) { b.ball(bx, -.02, bz, .5, .4, .5, '#d9544f'); b.cyl(bx, .55, bz, .05, .8, '#2f3331'); b.ball(bx, 1, bz, .12, .12, .12, '#e9c04b'); }
   c.landmarks.push({ id: `coast:${key}`, kind: 'coast', x: ox, z: promZ, radius: 16, name: 'the seafront' });
@@ -93,6 +93,8 @@ export function makeBalloonField(W, c, x, z, r, id) {
   // Fence along the street sides, a gap for the gate.
   for (const s of [-1, 1]) for (let k = -11; k <= 11; k += 1.6) { if (Math.abs(k) < 1.7 && s > 0) continue; b.box(x + k, .45, z + s * 11.6, .08, .9, .08, '#e9e3d2'); b.box(x + k, .72, z + s * 11.6, 1.6, .06, .05, '#e9e3d2'); }
   b.box(x - 11.6, .45, z, .08, .9, .08, '#e9e3d2'); b.box(x - 11.6, .72, z, .05, .06, 23.2, '#e9e3d2');
+  // Two wooden steps up to the basket, and the tether anchor.
+  b.box(x + 1.65, .11, z, .6, .22, 1.2, '#a98a63'); b.box(x + 1.05, .22, z, .6, .44, 1.2, '#a98a63'); W.solid(c, x + 1.65, .11, z, .6, .22, 1.2, { climbable: false, kind: 'step' }); W.solid(c, x + 1.05, .22, z, .6, .44, 1.2, { climbable: false, kind: 'step' });
   // Tether anchor.
   b.box(x + 2.4, .12, z - 2.4, .5, .24, .5, '#8a8f87'); b.add(GEO.torus, x + 2.4, .32, z - 2.4, .14, .14, .14, '#5f6b66', Math.PI / 2);
   W.bench(c, x - 6, z + 9.2, Math.PI); W.lamp(c, x + 10, z - 10);

@@ -180,6 +180,7 @@ class Person {
     for (const axis of ['x', 'z']) for (const dir of [-1, 1]) {
       const u = axis === 'x' ? node.x : node.z, line = axis === 'x' ? node.z : node.x, next = nextOffset(u, dir);
       if (!allowed(line, u, next)) continue;
+      const tx = axis === 'x' ? next : node.x, tz = axis === 'x' ? node.z : next; if (this.people.physics.world.inWater(tx, tz) || this.people.physics.world.inWater((tx + node.x) / 2, (tz + node.z) / 2)) continue; // nobody strolls into the sea
       const reverse = axis === this.axis && dir === -this.dir;
       options.push({ axis, dir, next, weight: reverse ? (any ? 1 : .08) : axis === this.axis ? 1.5 : 1 });
     }
@@ -318,7 +319,7 @@ export class People {
       const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
       const node = snapNode(center.x + Math.sin(a) * d, center.z + Math.cos(a) * d);
       const dist = Math.hypot(node.x - center.x, node.z - center.z);
-      if (dist < minD || dist > maxD + 12) continue;
+      if (dist < minD || dist > maxD + 12 || this.physics.world.inWater(node.x, node.z)) continue;
       if (camera && dist < 40) {
         const v = new THREE.Vector3(node.x, 1, node.z).project(camera);
         if (Math.abs(v.x) < 1.15 && Math.abs(v.y) < 1.15 && v.z < 1) continue;

@@ -275,6 +275,18 @@ interiors overhaul".
   map; `MAP_ICON` is shared by both. Its decorations are sized in backing pixels divided by `k = w / 116`,
   so they stay the same size on a retina screen. `canvas.dataset.heading` / `.yaw` record what the arrow
   actually points at.
+- **Chunk building is sliced.** `world.createChunkSteps(cx,cz)` is a *generator* that yields between the
+  ground, each of the four lots, the street furniture, `autoColliderSteps` (every 1200 pieces) and the
+  final mesh; `world.update(pos, 1)` spends at most `world.sliceMs` (7) per frame and finishes a chunk over
+  several frames. `update(pos, budget > 1)` builds synchronously — `g.teleport()` relies on that, so keep
+  the two paths when you touch it. Measured on this 2-CPU sandbox: a chunk used to cost 90–450 ms in one
+  frame, now 22–57 ms.
+- `Batch` writes into typed arrays by index (`reserve()` doubles them), caches `Color.set` parsing in
+  `colourCache`, and has a fast path for `rx = rz = 0` (a turn about Y only). `batch.items` is a **flat**
+  array of numbers, stride 10 (`ITEM_STRIDE`) — `autoColliders` walks it by index, so do not push objects.
+- The camera's roomier-angle search keeps its choice in `camAlt` while it still has room and eases the offset
+  (`aimDy`/`aimDp`, damped at 8/s); re-deciding every frame shook the view in tight rooms (measured: 0.38 rad
+  of view swing per frame at a wall, now 0.07). The eye pulls in at 26/s but relaxes out at 6–9/s.
 - `hash(cx,cz,seed,salt)` is used for all deterministic choices; changing a salt changes every town.
 - Chunk order in `world.buildings` depends on load order; tests that "find the first building" can change
   behaviour when lot kinds change — prefer explicit ids.
@@ -293,6 +305,12 @@ Two probes are checked in (they drive the `?test=1` API, so `npm start` first):
   `plane`, `tower`, `sky`, `balloon`, `planeout`, `street`), settles the camera with `g.settle()`, prints
   distance / whether the eye is buried / whether the cat is visible, and writes
   `/home/user/screenshots/<tag>-<scene>.png`. Compose a grid with Pillow and look at it.
+- `node scripts/shake.tmp.mjs` style probes are the way to look for camera jitter: run one simulate frame +
+  one `updateCamera` frame (`g.step(1/60)` then `g.settle(1)`), record `camera.position` and the view
+  direction from `camera.matrixWorld.elements` (`-e[8], -e[9], -e[10]`), and count frames where the view
+  swings more than 0.12 rad twice in a row.
+- `node scripts/indoor-probe.mjs 3000` — every interior in the seed: headroom, whether the rig calls it
+  indoors, and how far the eye ends up.
 - `node scripts/jitter-probe.mjs 3000 after` — walks six lanes (pavements, square, market, park) and counts
   auto-scrambles, direction flips, airborne steps and how far the cat got. Give it another port to compare
   against an older build: `git worktree add /tmp/before HEAD`, `npm run build` there (symlink `node_modules`),

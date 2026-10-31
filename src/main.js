@@ -583,6 +583,9 @@ function rayBox(origin, dir, s, pad = .2) {
 const CAM = { radius: .15, min: 1.15, interior: 3.4, ceiling: 6 };
 const camEye = new THREE.Vector3(), camRay = new THREE.Vector3(), camDir = new THREE.Vector3(), camLook = new THREE.Vector3(), camLast = new THREE.Vector3(), camDelta = new THREE.Vector3();
 let camIndoors = false;
+// The "find a roomier angle" choice, and the smoothed offset it applies. Keeping the choice (rather
+// than re-deciding every frame) and easing the offset is what stops the view shaking in tight rooms.
+let camAlt = null, aimDy = 0, aimDp = 0, eyeDist = 5;
 
 // Is this pitched roof over the cat's head? Then it is that room's ceiling, not scenery to be seen
 // over. (It is never a *wall*: a roof solid is "solid below the tiles", so a swept sphere inside the
@@ -650,24 +653,39 @@ function updateCamera(dt, instant = false) {
     return { yaw, pitch: p, t, dist: distance * t };
   };
   let shot = cast(cameraYaw, pitch), needY = -Infinity;
-  // The cat can be standing with its nose against something. Rather than jam the eye against its
-  // back (a screenful of fur), look for the nearest direction that actually has room: a little to
-  // the side, a little higher, over the shoulder. The requested angle is strongly preferred, so
-  // this only happens where the view would otherwise be useless.
-  if (shot.dist < CAM.min && !isWelcome) {
-    let bestScore = shot.dist;
-    const requested = shot;
-    for (const dy of [0, .45, -.45, .9, -.9, 1.4, -1.4]) {
-      for (const dp of [0, .35, .8, 1.15]) {
-        if (!dy && !dp) continue;
-        const alt = cast(cameraYaw + dy, Math.min(1.32, Math.max(PITCH_MIN, pitch + dp)));
-        if (alt.dist < requested.dist * 1.3) continue;
-        const score = alt.dist / (1 + Math.abs(dy) * 1.5 + Math.abs(dp) * 1.1);
-        if (score > bestScore) { bestScore = score; shot = alt; }
+  if (isWelcome) { camAlt = null; aimDy = aimDp = 0; }
+  else {
+    // The cat can be standing with its nose against something. Rather than jam the eye against its
+    // back (a screenful of fur), look for the nearest direction that actually has room: a little to
+    // the side, a little higher, over the shoulder. The choice is *kept* while it still has room —
+    // deciding afresh every frame let two candidates trade places, which is what shook the view in
+    // small rooms — and the offset is eased in and out instead of snapping.
+    if (camAlt) {
+      const again = cast(cameraYaw + camAlt.dy, clamp(pitch + camAlt.dp, PITCH_MIN, 1.32));
+      if (again.dist < Math.max(CAM.min * .85, shot.dist * .95)) camAlt = null; else shot = again;
+    }
+    if (!camAlt && shot.dist < CAM.min) {
+      let bestScore = shot.dist;
+      const requested = shot;
+      for (const dy of [0, .45, -.45, .9, -.9, 1.4, -1.4]) {
+        for (const dp of [0, .35, .8, 1.15]) {
+          if (!dy && !dp) continue;
+          const alt = cast(cameraYaw + dy, clamp(pitch + dp, PITCH_MIN, 1.32));
+          if (alt.dist < requested.dist * 1.3) continue;
+          const score = alt.dist / (1 + Math.abs(dy) * 1.5 + Math.abs(dp) * 1.1);
+          if (score > bestScore) { bestScore = score; shot = alt; camAlt = { dy, dp }; }
+        }
       }
     }
+    // Eased towards the chosen offset, and never faster than 4 rad/s, so even the biggest swing
+    // (a full 1.4 rad sidestep) takes a third of a second instead of a frame.
+    const ease = (was, want) => was + clamp(THREE.MathUtils.damp(was, want, 8, dt) - was, -4 * dt, 4 * dt);
+    aimDy = ease(aimDy, camAlt ? camAlt.dy : 0);
+    aimDp = ease(aimDp, camAlt ? camAlt.dp : 0);
   }
-  camDir.set(Math.sin(shot.yaw) * Math.cos(shot.pitch), Math.sin(shot.pitch), Math.cos(shot.yaw) * Math.cos(shot.pitch));
+  if (instant) { aimDy = aimDp = 0; camAlt = null; }
+  const aimPitch = clamp(pitch + aimDp, PITCH_MIN, 1.32), aimYaw = cameraYaw + aimDy;
+  camDir.set(Math.sin(aimYaw) * Math.cos(aimPitch), Math.sin(aimPitch), Math.cos(aimYaw) * Math.cos(aimPitch));
   const allowed = shot.t;
   if (!isWelcome) {
     // 2. Two things are not walls: pitched roofs and low scenery. Rather than pulling the eye in,
@@ -708,8 +726,16 @@ function updateCamera(dt, instant = false) {
     const overEye = physics.headroomAbove(cameraDesired.x, cameraDesired.z, player.pos.y, .25, true);
     cameraDesired.y = Math.min(cameraDesired.y, player.pos.y + Math.min(headroom, overEye) - .75);
   }
-  if (instant) camera.position.copy(cameraDesired);
-  else camera.position.lerp(cameraDesired, 1 - Math.exp(-(riding ? 30 : allowed < 1 ? 20 : camIndoors ? 12 : 9) * dt));
+  // Pulling the eye in has to be quick (a wall just came between it and the cat); letting it back
+  // out should be slow, or the view breathes in and out as the cat walks past doorways and corners.
+  const desiredDist = cameraDesired.distanceTo(cameraTarget);
+  const pullIn = desiredDist < eyeDist - .01;
+  if (instant) { camera.position.copy(cameraDesired); eyeDist = desiredDist; }
+  else {
+    const rate = riding ? 30 : pullIn ? 26 : camIndoors ? 9 : 6;
+    camera.position.lerp(cameraDesired, 1 - Math.exp(-rate * dt));
+    eyeDist = camera.position.distanceTo(cameraTarget);
+  }
   camera.lookAt(camLook);
   const targetFov = isWelcome ? 46 : 50 + player.runBlend * 6;
   if (Math.abs(camera.fov - targetFov) > .02) { camera.fov = THREE.MathUtils.damp(camera.fov, targetFov, 5, dt); camera.updateProjectionMatrix(); }

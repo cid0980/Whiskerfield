@@ -1,6 +1,6 @@
 {
   "name": "whiskerfield",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "private": true,
   "type": "module",
   "description": "A peaceful, installable, offline-first 3D cat adventure.",

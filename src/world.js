@@ -14,6 +14,8 @@ const tempPosition = new THREE.Vector3();
 const tempScale = new THREE.Vector3();
 const tempNormal = new THREE.Vector3();
 const tempColor = new THREE.Color();
+const tempEuler = new THREE.Euler();
+const tempBeamA = new THREE.Vector3(), tempBeamB = new THREE.Vector3(), tempBeamC = new THREE.Vector3(), tempBeamQ = new THREE.Quaternion();
 
 export function hashString(text) {
   let h = 2166136261;
@@ -55,44 +57,86 @@ export function makeWorldMaterial() {
   m.customProgramCacheKey = () => 'whiskerfield-glow';
   return m;
 }
+// The towns are drawn as one merged mesh per chunk, so building that mesh is the most expensive
+// thing the game does. This keeps the vertex soup in typed arrays that are written by index (no
+// growing JS arrays, no garbage per vertex), caches colour parsing, and turns the very common
+// "upright box or cylinder, turned about Y" case into four multiplies instead of a matrix.
+const colourCache = new Map();
+function colourOf(c) {
+  let v = colourCache.get(c);
+  if (v === undefined) { tempColor.set(c); v = [tempColor.r, tempColor.g, tempColor.b]; colourCache.set(c, v); }
+  return v;
+}
+const ITEM_STRIDE = 10; // geometry, x, y, z, sx, sy, sz, rx, ry, rz
 export class Batch {
-  constructor() { this.p = []; this.n = []; this.c = []; this.g = []; this.i = []; this.count = 0; this.items = []; }
+  constructor() {
+    this.cap = 2048;
+    this.p = new Float32Array(this.cap * 3); this.n = new Float32Array(this.cap * 3); this.c = new Float32Array(this.cap * 3); this.g = new Float32Array(this.cap);
+    this.i = []; this.count = 0; this.items = []; this.verts = 0;
+  }
+  reserve(extra) {
+    const need = this.count + extra;
+    if (need <= this.cap) return;
+    let cap = this.cap; while (cap < need) cap *= 2;
+    const grow = (src, width) => { const dst = new Float32Array(cap * width); dst.set(src.subarray(0, this.count * width)); return dst; };
+    this.p = grow(this.p, 3); this.n = grow(this.n, 3); this.c = grow(this.c, 3);
+    const g = new Float32Array(cap); g.set(this.g.subarray(0, this.count)); this.g = g; this.cap = cap;
+  }
   // `glow` (0..1) marks surfaces that shine at night: lamp heads, lit windows, signs.
   add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0, glow = 0) {
-    this.items.push({ geometry, x, y, z, sx, sy, sz, rx, ry, rz });
-    tempPosition.set(x, y, z); tempScale.set(sx, sy, sz);
-    tempQuaternion.setFromEuler(new THREE.Euler(rx, ry, rz));
-    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
-    tempColor.set(color);
-    const pos = geometry.attributes.position, norm = geometry.attributes.normal;
-    const offset = this.count;
-    for (let v = 0; v < pos.count; v++) {
-      tempPosition.fromBufferAttribute(pos, v).applyMatrix4(tempMatrix);
-      this.p.push(tempPosition.x, tempPosition.y, tempPosition.z);
-      tempNormal.set(norm.getX(v) / sx, norm.getY(v) / sy, norm.getZ(v) / sz).applyQuaternion(tempQuaternion).normalize();
-      this.n.push(tempNormal.x, tempNormal.y, tempNormal.z);
-      this.c.push(tempColor.r, tempColor.g, tempColor.b); this.g.push(glow);
+    const pos = geometry.attributes.position, norm = geometry.attributes.normal, n = pos.count;
+    this.items.push(geometry, x, y, z, sx, sy, sz, rx, ry, rz);
+    this.reserve(n);
+    const col = colourOf(color), cr = col[0], cg = col[1], cb = col[2];
+    const p = this.p, nn = this.n, cc = this.c, gg = this.g;
+    let po = this.count * 3, go = this.count;
+    if (Math.abs(rx) < 1e-6 && Math.abs(rz) < 1e-6) {
+      // Upright: the only rotation is a turn about Y, which is most of a town.
+      const cs = Math.cos(ry), sn = Math.sin(ry);
+      for (let v = 0; v < n; v++, po += 3, go++) {
+        const lx = pos.getX(v) * sx, ly = pos.getY(v) * sy, lz = pos.getZ(v) * sz;
+        p[po] = x + lx * cs + lz * sn; p[po + 1] = y + ly; p[po + 2] = z - lx * sn + lz * cs;
+        const nx0 = norm.getX(v) / sx, ny0 = norm.getY(v) / sy, nz0 = norm.getZ(v) / sz, len = Math.hypot(nx0, ny0, nz0) || 1;
+        const ax = nx0 / len, ay = ny0 / len, az = nz0 / len;
+        nn[po] = ax * cs + az * sn; nn[po + 1] = ay; nn[po + 2] = -ax * sn + az * cs;
+        cc[po] = cr; cc[po + 1] = cg; cc[po + 2] = cb; gg[go] = glow;
+      }
+    } else {
+      tempPosition.set(x, y, z); tempScale.set(sx, sy, sz);
+      tempQuaternion.setFromEuler(tempEuler.set(rx, ry, rz));
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+      const m = tempMatrix.elements;
+      for (let v = 0; v < n; v++, po += 3, go++) {
+        const lx = pos.getX(v), ly = pos.getY(v), lz = pos.getZ(v);
+        p[po] = m[0] * lx + m[4] * ly + m[8] * lz + m[12];
+        p[po + 1] = m[1] * lx + m[5] * ly + m[9] * lz + m[13];
+        p[po + 2] = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
+        tempNormal.set(norm.getX(v) / sx, norm.getY(v) / sy, norm.getZ(v) / sz).applyQuaternion(tempQuaternion).normalize();
+        nn[po] = tempNormal.x; nn[po + 1] = tempNormal.y; nn[po + 2] = tempNormal.z;
+        cc[po] = cr; cc[po + 1] = cg; cc[po + 2] = cb; gg[go] = glow;
+      }
     }
-    if (geometry.index) for (let j = 0; j < geometry.index.count; j++) this.i.push(geometry.index.getX(j) + offset);
-    else for (let j = 0; j < pos.count; j++) this.i.push(j + offset);
-    this.count += pos.count;
+    const offset = this.count, index = geometry.index;
+    if (index) for (let j = 0; j < index.count; j++) this.i.push(index.getX(j) + offset);
+    else for (let j = 0; j < n; j++) this.i.push(j + offset);
+    this.count += n;
     return this;
   }
   box(x, y, z, w, h, d, color, ry = 0, glow = 0) { return this.add(boxGeo, x, y, z, w, h, d, color, 0, ry, 0, glow); }
   cyl(x, y, z, r, h, color, rx = 0, rz = 0) { return this.add(cylinderGeo, x, y, z, r, h, r, color, rx, 0, rz); }
   ball(x, y, z, rx, ry, rz, color, soft = false) { return this.add(soft ? softSphereGeo : sphereGeo, x, y, z, rx, ry, rz, color); }
   beam(a, b, radius, color) {
-    const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), delta = end.clone().sub(start);
-    const q = new THREE.Quaternion().setFromUnitVectors(Y, delta.clone().normalize());
-    const e = new THREE.Euler().setFromQuaternion(q);
-    return this.add(cylinderGeo, ...start.add(end).multiplyScalar(.5).toArray(), radius, delta.length(), radius, color, e.x, e.y, e.z);
+    const start = tempBeamA.set(...a), end = tempBeamB.set(...b), delta = tempBeamC.copy(end).sub(start);
+    const q = tempBeamQ.setFromUnitVectors(Y, delta.normalize());
+    const e = tempEuler.setFromQuaternion(q);
+    return this.add(cylinderGeo, (start.x + end.x) / 2, (start.y + end.y) / 2, (start.z + end.z) / 2, radius, start.distanceTo(end), radius, color, e.x, e.y, e.z);
   }
   geometry() {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
-    g.setAttribute('glow', new THREE.Float32BufferAttribute(this.g, 1));
+    const g = new THREE.BufferGeometry(), c = this.count;
+    g.setAttribute('position', new THREE.BufferAttribute(this.p.subarray(0, c * 3), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.n.subarray(0, c * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.c.subarray(0, c * 3), 3));
+    g.setAttribute('glow', new THREE.BufferAttribute(this.g.subarray(0, c), 1));
     g.setIndex(this.i); g.computeBoundingSphere(); g.computeBoundingBox();
     return g;
   }
@@ -170,15 +214,38 @@ export class World {
       }
       this.pending.sort((a, b) => a.d - b.d);
       for (const [k, chunk] of this.chunks) if (Math.abs(chunk.cx - cx) > this.radius + 1 || Math.abs(chunk.cz - cz) > this.radius + 1) this.removeChunk(k);
+      if (this.building) { // half-built and no longer wanted: drop it rather than finish it
+        const [bx, bz] = this.buildingKey.split(',').map(Number);
+        if (Math.abs(bx - cx) > this.radius + 1 || Math.abs(bz - cz) > this.radius + 1) { this.building = null; this.buildingKey = null; }
+      }
       this.refreshColliders();
     }
-    let made = 0;
-    while (this.pending.length && made < budget) {
-      const { x, z } = this.pending.shift();
-      if (!this.chunks.has(`${x},${z}`)) { this.createChunk(x, z); made++; }
+    // A town block takes ~100 ms to build, which would be a visible stutter if it landed in one
+    // frame. So a chunk is built by a generator that yields between its stages: each frame does at
+    // most `sliceMs` of the work and the block appears a few frames later. A budget above 1 means
+    // "now, please" — a teleport or a test wants the neighbourhood there immediately.
+    const sync = budget > 1, deadline = sync ? Infinity : performance.now() + (this.sliceMs ?? 7);
+    let made = 0, steps = 0;
+    for (;;) {
+      if (!this.building) {
+        const next = this.pending.shift();
+        if (!next) break;
+        if (this.chunks.has(`${next.x},${next.z}`)) continue;
+        this.building = this.createChunkSteps(next.x, next.z);
+        this.buildingKey = `${next.x},${next.z}`;
+      }
+      if (steps && !sync && performance.now() >= deadline) break;
+      const step = this.building.next(); steps++;
+      if (step.done) { this.building = null; made++; }
     }
     if (made) this.refreshColliders();
     return made;
+  }
+  // Everything is synchronous still, for the callers that need the chunk right away.
+  createChunk(cx, cz) {
+    const steps = this.createChunkSteps(cx, cz);
+    let r = steps.next(); while (!r.done) r = steps.next();
+    return r.value;
   }
 
   refreshColliders() {
@@ -218,11 +285,14 @@ export class World {
   // collider unless it is lower than the cat's step height (paving, cobbles, lawns), string-thin
   // (bunting, chains), a roof shell (those have their own sloped colliders) or already inside an
   // explicit collider. Hand-placed colliders stay in charge of climbing/perching behaviour.
-  autoColliders(c, items) {
+  autoColliders(c, items) { for (const _ of this.autoColliderSteps(c, items)); }
+  *autoColliderSteps(c, items) {
     const explicit = c.colliders.filter(s => s.shape !== 'roof');
     const step = .27, euler = new THREE.Euler(), q = new THREE.Quaternion(), v = new THREE.Vector3();
-    for (const it of items) {
-      const { geometry: g, x, y, z, sx, sy, sz, rx, ry, rz } = it;
+    let sinceYield = 0;
+    for (let k = 0; k < items.length; k += ITEM_STRIDE) {
+      if (++sinceYield > 1200) { sinceYield = 0; yield; }
+      const g = items[k], x = items[k + 1], y = items[k + 2], z = items[k + 3], sx = items[k + 4], sy = items[k + 5], sz = items[k + 6], rx = items[k + 7], ry = items[k + 8], rz = items[k + 9];
       const sphere = g === sphereGeo || g === softSphereGeo;
       const round = g === cylinderGeo || g === taperedGeo || g === potGeo || g === coneGeo;
       if (!sphere && !round && g !== boxGeo && g !== torusGeo) continue; // roof shells etc.
@@ -234,7 +304,7 @@ export class World {
       if (sphere && Math.max(sx, sz) < .25) continue; // flowers, leaf tufts
       if (g === coneGeo && sx < .6) continue; // finials, lamp caps, lampshades
       if (!upright && round && sx < .15) continue; // thin rafters, branches
-      if (!upright && g === boxGeo && [sx, sy, sz].sort((a, b) => a - b)[1] < .1) continue; // tilted rods and tile strips: their boxes would wall off whole roofs
+      if (!upright && g === boxGeo && Math.max(Math.min(sx, sy), Math.min(Math.max(sx, sy), sz)) < .1) continue; // tilted rods and tile strips: their boxes would wall off whole roofs
       let minX, maxX, minY, maxY, minZ, maxZ;
       if (upright && Math.abs(ry) < .02) { minX = x - hx; maxX = x + hx; minY = y - hy; maxY = y + hy; minZ = z - hz; maxZ = z + hz; }
       else {
@@ -267,14 +337,15 @@ export class World {
     }
   }
 
-  createChunk(cx, cz) {
+  *createChunkSteps(cx, cz) {
     const key = `${cx},${cz}`, rng = random(hash(cx, cz, this.seed));
     const c = { cx, cz, key, batch: new Batch(), colliders: [], buildings: [], parks: [], water: [], mesh: null, jobs: [], extras: [], grounds: [], landmarks: [], smoke: [], group: null, ticks: [], lifts: [], lamps: [] };
     const ox = cx * CHUNK, oz = cz * CHUNK, theme = this.theme(cx, cz), sea = theme === 'sea', coast = theme === 'coast' || theme === 'rail-coast';
     if (sea) { // open water: nothing but the sea, and the railway's viaduct where a line crosses it
       makeSea(this, c, ox, oz, rng, isRailColumn(cx) ? railX(cx) : 0);
       if (isRailColumn(cx)) railTrack(this, c, railX(cx), oz, rng, false, true);
-      this.autoColliders(c, c.batch.items); this.buildExtras(c);
+      yield* this.autoColliderSteps(c, c.batch.items);
+      this.buildExtras(c);
       const mesh = new THREE.Mesh(c.batch.geometry(), this.material); mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = `sea-${key}`;
       c.mesh = mesh; c.batch = null; this.chunks.set(key, c); this.scene.add(mesh); return;
     }
@@ -305,9 +376,11 @@ export class World {
       const z = i % 2 ? oz + along : oz + 32.5 + across;
       c.batch.box(x, .052, z, .45 + rng() * .6, .018, .3 + rng() * .35, rng() > .5 ? '#aaa08a' : '#c4b99f', (rng() - .5) * .2);
     }
+    yield;
     const airport = isAirportChunk(cx, cz);
     if (isRailColumn(cx)) railTrack(this, c, railX(cx), oz, rng, isStationChunk(cx, cz));
     if (airport) makeAirport(this, c, ox, oz, rng, key);
+    yield;
     for (let i = 0; i < 4 && !airport && !lake; i++) {
       const lx = i % 2 ? 16.5 : -16.5, lz = i < 2 ? -16.5 : 16.5;
       if (coast && i < 2) continue; // the northern lots are under the sea
@@ -327,6 +400,7 @@ export class World {
       else if (lot === 'allotments') makeAllotments(this, c, x, z, r, id);
       else if (lot === 'cafe' || lot === 'shop' || lot === 'home') makeInterior(this, c, x, z, r, id, lot);
       else this.makeBuilding(c, x, z, r, id, cx === 0 && cz === 0 ? i : -1);
+      yield;
     }
     // Street trees, lanterns, and small places to pause.
     for (const s of [-1, 1]) {
@@ -334,12 +408,13 @@ export class World {
       if (!coast) this.lamp(c, ox + s * 27.2, oz - 27.2);
       if (rng() > .35 && !airport && !lake) this.bench(c, ox + s * 27, oz + 14, s * Math.PI / 2);
     }
+    yield;
     if (cx === 0 && cz === 0) {
       this.makeSpawn(c, rng);
     } else if (rng() > .65 && !country.snow && !airport && !lake) {
       this.bunting(c, ox - 12, oz, ox + 12, oz, 6.5);
     }
-    this.autoColliders(c, c.batch.items);
+    yield* this.autoColliderSteps(c, c.batch.items);
     this.buildExtras(c);
     const mesh = new THREE.Mesh(c.batch.geometry(), this.material);
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = `neighborhood-${key}`;

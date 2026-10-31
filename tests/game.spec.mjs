@@ -774,6 +774,47 @@ test('the camera: indoors it stays in the room with the cat, it can look up at t
   expect(Math.abs(r.train.camRode - r.train.rode)).toBeLessThan(1.5);
 });
 
+test('towns stream in a slice at a time, and the camera holds still in a tight corner', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, w = g.world, out = {};
+    const step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    // Sliced streaming: one frame of work leaves chunks pending; a "now, please" budget finishes them.
+    w.update({ x: 520, z: 520 }, 1);
+    out.leftPending = w.pending.length > 0 || !!w.building;
+    w.update({ x: 520, z: 520 }, 25);
+    out.finished = w.pending.length === 0 && !w.building;
+    // Back to a house, nose against an inside wall: the view must not swing about frame to frame.
+    const h = g.world.landmarks.filter(l => l.kind === 'house').find(l => Math.hypot(l.x - 1, l.z - 7) < 40) || g.world.landmarks.find(l => l.kind === 'house');
+    g.teleport(h.x, .6, h.z); step(40);
+    g.setCamera(.6, .3, 5.4); for (let i = 0; i < 40; i++) { step(1); g.settle(1); }
+    const view = () => { const q = g.camera.quaternion; return [-2 * (q.x * q.z + q.w * q.y), -2 * (q.y * q.z - q.w * q.x), -(1 - 2 * (q.x * q.x + q.y * q.y))]; };
+    let prev = view(), maxSwing = 0, flips = 0, prevSwing = 0, steady = 0, steadyFlips = 0;
+    for (let i = 0; i < 180; i++) {
+      g.hold.y = -1; g.hold.x = 1;                 // walk into the wall and keep pushing
+      step(1); g.settle(1);
+      const now = view(), dot = Math.max(-1, Math.min(1, now[0] * prev[0] + now[1] * prev[1] + now[2] * prev[2]));
+      const swing = Math.acos(dot); maxSwing = Math.max(maxSwing, swing);
+      if (swing > .12 && prevSwing > .12) flips++;
+      // The last third is the cat pressed against the wall, going nowhere: by then the view must be still.
+      if (i > 120) { steady = Math.max(steady, swing); if (swing > .12) steadyFlips++; }
+      prevSwing = swing; prev = now;
+    }
+    g.hold.x = g.hold.y = 0;
+    out.maxSwing = +maxSwing.toFixed(3); out.flips = flips; out.steady = +steady.toFixed(3); out.steadyFlips = steadyFlips; out.indoors = g.cameraInfo().indoors;
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.leftPending).toBe(true);
+  expect(r.finished).toBe(true);
+  expect(r.indoors).toBe(true);
+  // Pressed against the wall the view has to settle: that is the shake the player saw in small rooms.
+  expect(r.steadyFlips).toBe(0);
+  expect(r.steady).toBeLessThan(.07);
+  // Picking a roomier angle and easing into it is a deliberate move, not a shake: no frame may swing far.
+  expect(r.maxSwing).toBeLessThan(.25);
+});
+
 test('the minimap: a square of the town with the cat in it, pointing where it is going', async ({ page }) => {
   const errors = await enter(page);
   const r = await page.evaluate(async () => {

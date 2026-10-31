@@ -129,12 +129,20 @@ export class PhysicsWorld {
     }
     return { t: best, solid };
   }
-  // Distance from the given feet height to the nearest solid overhead. The camera reads this to
-  // know it is indoors (a low number means a room, a carriage or a cabin, not the open sky).
-  headroomAbove(x, z, feetY, radius = .3) {
+  // Distance from the given feet height to the lowest thing overhead. The camera reads this to
+  // know it is indoors (a finite answer means a room, a shop, a carriage or a cabin, not the open
+  // sky) and to keep the eye below it. Pitched roofs count only when asked for (`roofs`): their
+  // underside is a real ceiling for a wing or a shopfront that has no separate ceiling collider.
+  headroomAbove(x, z, feetY, radius = .3, roofs = false) {
     let best = Infinity;
     for (const s of this.query(x, z, radius)) {
-      if (s.sensor || s.shape === 'roof' || s.shape === 'ellipsoid') continue;
+      if (s.sensor || s.shape === 'ellipsoid') continue;
+      if (s.shape === 'roof') {
+        if (!roofs) continue;
+        const h = surfaceHeight(s, x, z), gap = h - feetY;
+        if (Number.isFinite(h) && gap > .45 && gap < best) best = gap;
+        continue;
+      }
       const gap = s.minY - feetY;
       if (gap <= .45 || gap >= best) continue;
       // Only something the size of a room counts as a ceiling: a table top or an awning above the

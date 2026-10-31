@@ -40,12 +40,14 @@ const measure = () => {
 
 let page;
 const scenes = {
-  house: async () => { const r = await page.evaluate(() => {
+  // Walk into a house / café / shop, stand clear of the walls, and turn to the roomiest angle.
+  ...Object.fromEntries(['house', 'cafe', 'shop', 'home'].map(kind => [kind, async () => page.evaluate(k => {
     const g = window.__whiskerfield, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
-    const h = g.world.landmarks.filter(l => l.kind === 'house').find(l => Math.hypot(l.x - 1, l.z - 7) < 40) || g.world.landmarks.find(l => l.kind === 'house');
-    g.teleport(h.x, .6, h.z); step(40);
-    // Stand clear of the nearest wall (the house centre can be right against a room divider),
-    // so the shot shows a room, not a cat with its nose on a wall.
+    const spots = g.world.landmarks.filter(l => l.kind === k && l.inside);
+    const l = spots.find(m => Math.hypot(m.x - 1, m.z - 7) < 40) || spots[0];
+    g.teleport(l.x, .6, l.z); step(40);
+    // Stand clear of the nearest wall (a room centre can be right against a divider), so the shot
+    // shows a room, not a cat with its nose on plaster.
     let best = null;
     for (const s of g.physics.query(g.player.pos.x, g.player.pos.z, 3)) {
       if (s.kind !== 'wall' || s.person || s.sensor) continue;
@@ -63,9 +65,8 @@ const scenes = {
       const c = g.cameraInfo(); if (c.distance > pick.distance) pick = { yaw, distance: c.distance }; worst = Math.min(worst, c.distance);
     }
     g.setCamera(pick.yaw, .3, 5.4); step(6); g.settle(150);
-    window.__pick = { worst: +worst.toFixed(2), best: pick };
-    return { id: h.id };
-  }); return r; },
+    return { id: l.id, worst: +worst.toFixed(2) };
+  }, kind)])),
   train: async () => page.evaluate(() => {
     const g = window.__whiskerfield, t = g.train; let n = 0;
     g.teleport(50, 1.3, -16.5);

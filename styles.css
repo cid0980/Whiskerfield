@@ -122,6 +122,13 @@ body.settled .keyboard-controls{opacity:.7}
 .rest-button[aria-pressed="true"],body.resting .rest-button{background:#c9d3e6}
 
 /* Touch controls */
+.minimap{position:absolute;right:var(--edge-x-r);top:calc(var(--edge-top) + 46px);width:116px;height:116px;border-radius:14px;
+  border:2px solid rgba(43,38,34,.85);background:#dce6c9;box-shadow:0 6px 16px #2b26223d;z-index:6;cursor:pointer;
+  opacity:0;transform:scale(.92);transform-origin:top right;transition:opacity .35s ease,transform .35s ease;pointer-events:none;touch-action:manipulation}
+body.started .minimap{opacity:1;transform:none;pointer-events:auto}
+body.resting .minimap,body.flying .minimap{opacity:.45}
+@media (max-width:560px){.minimap{width:92px;height:92px;border-radius:12px;top:calc(var(--edge-top) + 44px)}}
+@media (max-height:430px){.minimap{width:84px;height:84px}}
 .touch-controls{display:none}
 .joystick{position:absolute;left:max(18px,calc(var(--safe-left) + 10px));bottom:max(18px,calc(var(--safe-bottom) + 10px));width:112px;height:112px;border-radius:50%;touch-action:none}
 .joystick-ring{position:absolute;inset:0;border-radius:50%;background:rgba(247,241,227,.35);border:2px solid rgba(43,38,34,.55)}

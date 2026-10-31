@@ -12,7 +12,7 @@ import { Batch, GEO } from './world.js';
 
 const TAU = Math.PI * 2;
 const BALLOON = { boardDelay: 2.2, climb: 1.7, sink: 1.4, wind: 3.2, high: [30, 44], drift: [45, 72], dwell: 6 };
-const BOAT = { speed: 3.6, accel: 1.4, brake: 3, turn: 1.3, bow: 2.1 };
+const BOAT = { speed: 4.6, accel: 5.5, brake: 4, turn: 2.6, bow: 2.1 };
 
 export class Vehicles {
   constructor(scene, world, physics) { this.scene = scene; this.world = world; this.physics = physics; this.list = new Map(); this.onEvent = null; this.time = 0; }

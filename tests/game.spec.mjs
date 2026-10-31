@@ -723,6 +723,16 @@ test('the camera: indoors it stays in the room with the cat, it can look up at t
     const inRoom = !!(h.inside && g.player.pos.x > h.inside.minX && g.player.pos.x < h.inside.maxX);
     const view = settle(.6);
     out.house = { inRoom, indoors: view.indoors, eyeIn: view.inside, blocked: view.blocked, distance: view.distance };
+    // The tall-ceilinged places: a café, a grocer and somebody's living room are 3.55 m to the tiles,
+    // which the rig once mistook for open air — the eye ended up 8 m away, over the roof.
+    out.tall = {};
+    for (const kind of ['cafe', 'shop', 'home']) {
+      const l = g.world.landmarks.find(m => m.kind === kind && m.inside);
+      if (!l) continue;
+      g.teleport(l.x, .6, l.z); step(40);
+      const v = settle(.6);
+      out.tall[kind] = { indoors: v.indoors, eyeIn: v.inside, distance: +v.distance.toFixed(2), inside: !!(l.inside && g.player.pos.x > l.inside.minX && g.player.pos.x < l.inside.maxX && g.player.pos.z > l.inside.minZ && g.player.pos.z < l.inside.maxZ) };
+    }
     // Looking up: the view tips well above the horizon, far more than the old -0.62 clamp allowed.
     g.teleport(4, .4, 6); step(30);
     out.sky = settle(.5, -1.15);
@@ -746,6 +756,13 @@ test('the camera: indoors it stays in the room with the cat, it can look up at t
   expect(r.house.blocked).toBe(1);
   expect(r.house.distance).toBeGreaterThan(0.7);
   expect(r.house.distance).toBeLessThan(5.5);
+  // Tall-ceilinged rooms are rooms too: detected, the eye in open air, and the lens trimmed to the room.
+  for (const kind of Object.keys(r.tall)) {
+    expect(r.tall[kind].inside, kind).toBe(true);
+    expect(r.tall[kind].indoors, kind).toBe(true);
+    expect(r.tall[kind].eyeIn, kind).toBeNull();
+    expect(r.tall[kind].distance, kind).toBeLessThan(4.2);
+  }
   // Looking up: a much steeper view than the old clamp; level looks roughly level.
   expect(r.sky.lookUp).toBeGreaterThan(.5);
   expect(r.level.lookUp).toBeLessThan(0);
@@ -755,6 +772,52 @@ test('the camera: indoors it stays in the room with the cat, it can look up at t
   expect(Math.abs(r.train.dist - r.train.dist2)).toBeLessThan(1);
   expect(r.train.rode).toBeGreaterThan(-2);
   expect(Math.abs(r.train.camRode - r.train.rode)).toBeLessThan(1.5);
+});
+
+test('the minimap: a square of the town with the cat in it, pointing where it is going', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(async () => {
+    const g = window.__whiskerfield, out = {};
+    const map = document.getElementById('minimap'), ctx = map.getContext('2d');
+    const shot = () => ctx.getImageData(0, 0, map.width, map.height).data;
+    const sum = d => { let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] * 3 + d[i + 2] * 7; return s; };
+    const frame = ms => new Promise(r => setTimeout(r, ms || 120));
+    await frame(200);
+    g.drawMinimap();
+    const box = map.getBoundingClientRect();
+    out.box = [Math.round(box.width), Math.round(box.height)];
+    out.square = Math.abs(box.width - box.height) <= 1;
+    out.onRight = box.left > innerWidth * .6;
+    out.opaque = +getComputedStyle(map).opacity;
+    out.painted = ctx.getImageData(0, 0, map.width, map.height).data.some((v, i) => i % 4 === 3 && v > 8);
+    const before = sum(shot());
+    // Walk north: the map must scroll (the town slides past the cat).
+    g.hold.y = -1; for (let i = 0; i < 100; i++) g.step(1 / 60); g.hold.y = 0;
+    g.drawMinimap();
+    out.scrolled = sum(shot()) !== before;
+    // The arrow turns with the cat: walk back the other way and the drawn heading turns round with it.
+    const drawn = () => Number(map.dataset.heading);
+    out.drawnNorth = drawn();
+    g.hold.y = 1; for (let i = 0; i < 100; i++) g.step(1 / 60); g.hold.y = 0;
+    g.drawMinimap();
+    // 0 means the arrow kept pointing the same way; π means it turned right round with the cat.
+    const turn = Math.abs(((drawn() - out.drawnNorth + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    out.turned = turn > Math.PI - .35;
+    out.headingMatches = Math.abs(drawn() - g.getState().heading) < .35;
+    // Tapping it opens the big map.
+    map.click();
+    out.modal = !document.getElementById('modal-backdrop').hidden && !document.getElementById('map-modal').hidden ? 'map-modal' : null;
+    return out;
+  });
+  expect(errors).toEqual([]);
+  expect(r.square).toBe(true);
+  expect(r.onRight).toBe(true);
+  expect(r.opaque).toBe(1);
+  expect(r.painted).toBe(true);
+  expect(r.scrolled).toBe(true);
+  expect(r.turned).toBe(true);
+  expect(r.headingMatches).toBe(true);
+  expect(r.modal).toBe('map-modal');
 });
 
 test('walking past scenery: no scrambling over knee-high clutter, no bouncing between colliders', async ({ page }) => {

@@ -178,6 +178,10 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    ground-lifted eye carries the look-at point up with it. Moving supports (`vehicle/train/lift/plane`)
    are followed by the frame's whole delta before smoothing. One `orbit()`/`sensitivity()` path serves
    drag, pinch, wheel and gamepad. Verified by the new camera test and `scripts/camera-shots.mjs` before/after grids.
+   Follow-up in **1.7.3**: "indoors" is any ceiling over the cat up to 6 m (`CAM.ceiling`), pitched roofs
+   count as a ceiling when there is nothing else (`headroomAbove(..., true)`), the eye is clamped under the
+   ceiling at both the cat and its own end of the shot, and the outdoor "see over the roof" lift is capped
+   at 2.4 m. Before that, the café/grocer/living-room (3.55 m ceilings) put the camera outside the building.
 3. **[DONE in 1.7.2, pair A]** Cat jitter. `nearbyWall` ignores solids the cat can step onto, ignores
    auto-colliders under 0.6 m tall or paper-thin, and `perchAbove()` refuses a low wall with nowhere to
    stand on top (tall walls defer to the mantle, as before). `resolve()` caps each push at 0.2 m and does
@@ -239,7 +243,19 @@ interiors overhaul".
   camera off the aisle centre sees the livery tube straight across the cabin. The `rz` sign picks the half:
   `+Math.PI/2` keeps the top, `-Math.PI/2` the bottom.
 - `physics.headroomAbove` only counts *room-sized* solids as ceilings (≥2.4 m in both directions): otherwise
-  a table top over the cat's head would put the camera into interior mode on the street.
+  a table top over the cat's head would put the camera into interior mode on the street. Pass
+  `roofs = true` when you want pitched roofs counted too (an annexe or shopfront ceiling).
+- **"Indoors" is *is there a ceiling over the cat*, not *is the ceiling low*.** 1.7.2 tested
+  `headroom < 3.05`; the café, the grocer and somebody's living room are 3.55 m to the tiles (3.19 m of
+  headroom), so all three were treated as open air, the camera drifted out through the shopfront to 8.16 m
+  and you looked down at the roof from outside. The limit is `CAM.ceiling = 6` now and the lens is still
+  trimmed to the headroom there actually is. `scripts/indoor-probe.mjs` lists every interior with its
+  headroom, whether it is detected as indoors, and how far the eye ends up — run it after touching the rig.
+- A `shape: 'roof'` solid means "everything below the tiles is solid", so a swept sphere inside the building
+  starts already buried in it (`sweepRoof` returns 0 for a ray under the surface). Never make roofs block
+  the camera *cast*: they limit the eye's height instead (`headroomAbove(..., true)` plus the ceiling
+  clamp). Doing the obvious thing — roof over the cat ⇒ occluder — jammed the eye 0.88 m from the cat in
+  every room.
 - `nearbyWall` now ignores anything the cat can step onto and auto-colliders under 0.6 m — if a new place
   needs a small climbable prop, give it an explicit solid with `climbable: true`.
 - Camera probe scenes must close modals (`#flight-modal [data-close]`) and use `g.settle()`; a screenshot
@@ -251,6 +267,14 @@ interiors overhaul".
 - `g.world.radius=1; g.world.center=''` in tests loads fewer chunks; `world.landmarks` only has loaded ones.
 - Holding a direction after a climb makes the cat scramble up the next wall; release input in tests.
 - `toBeVisible` fails on `#touch-controls` in desktop tests; click hidden settings buttons via `evaluate`.
+- **Heading convention:** `player.heading` faces `(sin h, cos h)` in world `(x, z)` — *not* `(-sin, -cos)`.
+  Both maps draw the arrow with `ctx.rotate(-player.heading)` and a triangle pointing **down** (+y), which
+  is right; an up-pointing triangle (or a `+π/2` arc on the camera cone) points the wrong way. `getState()`
+  has `heading` and `drawMinimap()` is in the test API, so check the arrow rather than guessing.
+- The minimap (`#minimap`, drawn by `drawMinimap`) redraws at 12 Hz from the same world data as the big
+  map; `MAP_ICON` is shared by both. Its decorations are sized in backing pixels divided by `k = w / 116`,
+  so they stay the same size on a retina screen. `canvas.dataset.heading` / `.yaw` record what the arrow
+  actually points at.
 - `hash(cx,cz,seed,salt)` is used for all deterministic choices; changing a salt changes every town.
 - Chunk order in `world.buildings` depends on load order; tests that "find the first building" can change
   behaviour when lot kinds change — prefer explicit ids.

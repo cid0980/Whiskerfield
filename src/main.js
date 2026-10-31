@@ -179,7 +179,7 @@ function init() {
   requestAnimationFrame(loop);
   if (params.get('test') === '1') window.__whiskerfield = {
     player, get world() { return world; }, get people() { return people; }, get birds() { return birds; }, get physics() { return physics; }, cat, renderer, camera, input, hold, keys, start, save, adapt: adaptQuality, getQuality: () => ({ level: qualityLevel, pixelRatio: renderer.getPixelRatio(), shadows: renderer.shadowMap.enabled }), mapCenter: () => mapCenter, step: dt => { simulate(dt); people.interactive = started && !modal; people.update(dt, player.pos, player.speed, camera); birds.update(dt, player.pos, player.speed); fun.sync(); fun.update(dt, player, people); ducks.sync(player.pos); ducks.update(dt, player.pos, time); const ride = train.update(dt, player.pos, !!player.support?.train); if (player.support?.train && !flight.active) player.pos.z += ride; lifts.sync(); const lifted = lifts.update(dt, player.pos, player.support); if (lifted) player.pos.y += lifted; vehicles.sync(); carry(vehicles.update(dt, player.pos, player.support)); if (flight.active) { flight.update(dt); if (flight.active && flight.plane) { player.pos.copy(flight.seat); player.heading = flight.plane.group.rotation.y + Math.PI / 2; } } else { const pl = planes.at(player.pos); if (pl) { boardTimer += dt; if (boardTimer > .9) { boardTimer = -999; offerFlight(pl); } } else boardTimer = 0; } planes.sync(); time += dt; }, get fun() { return fun; }, get ducks() { return ducks; }, get train() { return train; }, get planes() { return planes; }, get vehicles() { return vehicles; }, flight, get country() { return countryId; }, travel, offerFlight, board: id => beginFlight(id), wearHat, hats: HATS, discover: checkDiscoveries, platformCalls: platform.calls,
-    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance, indoors: camIndoors, cameraPitch, cameraYaw }),
+    getState: () => ({ ready, started, resting, modal, position: player.pos.toArray(), heading: player.heading, speed: player.speed, grounded: player.grounded, climbing: !!player.climbing, support: player.support?.kind || null, roofs: visitedRoofs.size, gardens: visitedGardens.size, places: visitedPlaces.size, friends: friendsMade, shinies: fun ? fun.found : 0, knocks: fun ? fun.knocks : 0, hat: outfit.hat, outfit: { ...outfit }, counts: fun ? fun.counts() : {}, chunks: world.chunks.size, colliders: world.colliders.length, npcs: people.list.length, greetings: people.greetings, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, offlineReady, installed, installButtonHidden: $('install-button').hidden, fullscreen: platform.isFullscreen(), cameraDistance, indoors: camIndoors, cameraPitch, cameraYaw }),
     wear, outfit, wardrobe, get lifts() { return lifts; }, get day() { return day; }, teleport: (x, y, z) => { player.pos.set(x, y, z); player.vx = player.vz = player.vy = 0; player.climbing = null; player.grounded = false; world.update(player.pos, 25); },
     // What the camera is doing right now: is it indoors, is the cat actually in view (nothing solid
     // between the eye and the cat, and the eye inside nothing), and how far away is it.
@@ -196,6 +196,7 @@ function init() {
     },
     // Settle the camera the way the render loop does, without waiting for frames (software WebGL is slow).
     settle: (n = 90, dt = 1 / 60) => { for (let i = 0; i < n; i++) updateCamera(dt); },
+    drawMinimap: () => drawMinimap(),
     setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = clamp(pitch, PITCH_MIN, PITCH_MAX); cameraDistance = cameraDistanceTarget = distance; cameraInputTimer = 1.6; },
     getSettings: () => ({ ...settings })
   };
@@ -340,6 +341,7 @@ function createUI() {
   $('settings-help').addEventListener('click', () => openModal('help-modal'));
   $('settings-button').addEventListener('click', () => openModal('settings-modal'));
   $('map-button').addEventListener('click', () => openModal('map-modal'));
+  $('minimap').addEventListener('click', () => { mapCenter = { x: player.pos.x, z: player.pos.z }; openModal('map-modal'); });
   $('hat-button').addEventListener('click', () => openModal('wardrobe-modal'));
   $('brand').addEventListener('click', e => { e.preventDefault(); openModal('settings-modal'); });
   $('rest-button').addEventListener('click', toggleRest);
@@ -578,10 +580,17 @@ function rayBox(origin, dir, s, pad = .2) {
 // shortens up and looks slightly higher, so a wall behind the cat never hides it; outside it
 // relaxes back out slowly. Looking up is a real thing here: pitch runs to -1.32, and when the eye
 // is lifted off the ground to keep it out of the grass, the look-at point rises with it.
-const CAM = { radius: .15, min: 1.15, interior: 3.4, interiorCeiling: 3.05 };
+const CAM = { radius: .15, min: 1.15, interior: 3.4, ceiling: 6 };
 const camEye = new THREE.Vector3(), camRay = new THREE.Vector3(), camDir = new THREE.Vector3(), camLook = new THREE.Vector3(), camLast = new THREE.Vector3(), camDelta = new THREE.Vector3();
 let camIndoors = false;
 
+// Is this pitched roof over the cat's head? Then it is that room's ceiling, not scenery to be seen
+// over. (It is never a *wall*: a roof solid is "solid below the tiles", so a swept sphere inside the
+// house would start already buried in it and jam the eye against the cat. It limits the eye's
+// height instead — see `headroomAbove` below and the ceiling clamp at the end of updateCamera.)
+function roofOverCat(s) {
+  return surfaceHeight(s, player.pos.x, player.pos.z) > player.pos.y + .4;
+}
 // What may hide the cat from the eye. Low, walk-over things (kerbs, benches, fountain rims) are
 // lifted over further down instead of yanking the camera in; foliage, people and thin posts never
 // block. Anything tall blocks, and so does a surface overhead — a ceiling, an awning, the deck of
@@ -619,9 +628,11 @@ function updateCamera(dt, instant = false) {
   camLast.copy(player.pos);
   const pitch = isWelcome ? .3 : cameraPitch;
   let distance = isWelcome ? (narrow ? 9 : 11) : cameraDistance * (1 + player.runBlend * .14);
-  // Indoors: a low ceiling means a room, a carriage or a cabin, where a long lens is just a wall.
-  const headroom = isWelcome ? Infinity : physics.headroomAbove(player.pos.x, player.pos.z, player.pos.y, .35);
-  camIndoors = headroom < CAM.interiorCeiling;
+  // Indoors: a ceiling overhead means a room, a shop, a carriage or a cabin, where a long lens is
+  // just a wall. It is not a height test — a café's ceiling is 3.55 m up and a hall's is higher —
+  // only "is there a roof over the cat at all" within a couple of storeys.
+  const headroom = isWelcome ? Infinity : physics.headroomAbove(player.pos.x, player.pos.z, player.pos.y, .35, true);
+  camIndoors = headroom < CAM.ceiling;
   if (camIndoors) {
     // Shorten only as much as the ceiling demands: a long carriage still gives a long view down
     // the aisle, a cabin or a small room gives a short one. The cast below trims whatever is left.
@@ -663,9 +674,11 @@ function updateCamera(dt, instant = false) {
     // lift it just enough that the line of sight clears them — but never indoors, where "seeing over
     // the roof" would mean leaving the room through the ceiling.
     for (const s of camIndoors ? [] : physics.query(player.pos.x, player.pos.z, distance + 1.5)) {
-      if (s.sensor || s.person || s.shape === 'ellipsoid') continue;
-      if (s.shape !== 'roof' && cameraOccluder(s, cameraTarget.y)) continue;
-      if (s.shape !== 'roof' && (s.shape === 'cylinder' && s.r < .16)) continue;
+      // Walls, ceilings and a roof overhead are blockers — the cast above has already pulled the
+      // eye in for those — so what is left here is scenery low enough to see over.
+      if (cameraOccluder(s, cameraTarget.y)) continue;
+      if (s.shape === 'roof' && roofOverCat(s)) continue;
+      if (s.shape === 'cylinder' && s.r < .16) continue;
       if (s.shape === 'roof') {
         for (let k = 1; k <= 6; k++) { const q = k / 6, hx = cameraTarget.x + camDir.x * distance * q, hz = cameraTarget.z + camDir.z * distance * q, hy = surfaceHeight(s, hx, hz); if (Number.isFinite(hy) && cameraTarget.y + camDir.y * distance * q < hy + .35) needY = Math.max(needY, cameraTarget.y + (hy + .35 - cameraTarget.y) / q); }
         continue;
@@ -675,7 +688,7 @@ function updateCamera(dt, instant = false) {
     }
   }
   cameraDesired.copy(camDir).multiplyScalar(Math.max(shot.dist, CAM.min * .6)).add(cameraTarget);
-  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + distance * 1.1);
+  if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + Math.min(2.4, distance * 1.1));
   // 3. Never let the eye sink into the ground, a pond, a bench top — and when that lift happens
   // while looking up, carry the look-at point up with it, so "look at the sky" really looks up.
   camLook.copy(cameraTarget);
@@ -688,9 +701,13 @@ function updateCamera(dt, instant = false) {
       camLook.y += Math.min(3.4, lift * .92);
     }
   }
-  // Keep the eye under the ceiling. Rooms, carriages and cabins have a real roof — and in a plane
-  // the inner skin of the fuselage hangs lower than its collider, so give it room.
-  if (camIndoors) cameraDesired.y = Math.min(cameraDesired.y, player.pos.y + headroom - .75);
+  // Keep the eye under the ceiling: the one over the cat, and the (lower, by the eaves) one over
+  // wherever the eye has ended up. Rooms, shops, carriages and cabins all have a real roof — and in
+  // a plane the inner skin of the fuselage hangs lower than its collider, so give it room.
+  if (camIndoors) {
+    const overEye = physics.headroomAbove(cameraDesired.x, cameraDesired.z, player.pos.y, .25, true);
+    cameraDesired.y = Math.min(cameraDesired.y, player.pos.y + Math.min(headroom, overEye) - .75);
+  }
   if (instant) camera.position.copy(cameraDesired);
   else camera.position.lerp(cameraDesired, 1 - Math.exp(-(riding ? 30 : allowed < 1 ? 20 : camIndoors ? 12 : 9) * dt));
   camera.lookAt(camLook);
@@ -810,6 +827,65 @@ function updateBubble() {
   el.style.transform = `translate(${x}px,${y}px) translate(-50%,-100%)`; el.classList.add('show');
 }
 
+// One colour per kind of place, shared by the big map and the little one.
+const MAP_ICON = { lake: '#7fb3ad', coast: '#6fa3a6', balloons: '#d9544f', market: '#d7a048', works: '#8a6a4c', warehouse: '#8a8072', tower: '#5f6b66', playground: '#d9544f', cafe: '#c88f6e', shop: '#6f9a4f', home: '#b48c9c', station: '#4f7f96', allotments: '#8fb04f', airport: '#5f6b66', bridge: '#4f5a56', yard: '#8a6a4c', signalbox: '#8f5f4e', house: '#b48c9c', worksfloor: '#9a6b55', lobby: '#8fb0b8', depotfloor: '#8a9893' };
+
+// A small square of the neighbourhood, always in the corner: the streets and buildings round the
+// cat, the places it has found, the cat itself in the middle and the way it is facing. North is up,
+// like the big map, and the faint cone shows where the camera is looking. Cheap enough to redraw a
+// dozen times a second: only the chunks and buildings inside the square are touched.
+const MINI_SPAN = 86;
+let miniTimer = 0, miniDrawn = false;
+function drawMinimap(force = false) {
+  const canvas = $('minimap'); if (!canvas) return;
+  if (!miniDrawn) { const side = Math.round((canvas.clientWidth || 116) * Math.min(devicePixelRatio || 1, 2)); canvas.width = canvas.height = side; miniDrawn = true; }
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, scale = w / MINI_SPAN;
+  const k = w / 116; // backing pixels per CSS pixel: the decorations keep their size on a retina screen
+  const cx = player.pos.x, cz = player.pos.z, reach = MINI_SPAN / 2 + 14;
+  const px = x => (x - cx) * scale + w / 2, pz = z => (z - cz) * scale + h / 2;
+  ctx.fillStyle = '#dce6c9'; ctx.fillRect(0, 0, w, h);
+  for (const c of world.chunks.values()) {
+    const x = c.cx * CHUNK, z = c.cz * CHUNK;
+    if (Math.abs(x - cx) > CHUNK + reach || Math.abs(z - cz) > CHUNK + reach) continue;
+    ctx.fillStyle = (c.cx + c.cz) % 2 ? '#d4e1bf' : '#d8e3c4'; ctx.fillRect(px(x - 36), pz(z - 36), 72 * scale, 72 * scale);
+    ctx.fillStyle = '#eee9d4';
+    for (const s of [-1, 1]) { ctx.fillRect(px(x + s * 32.5 - 3.5), pz(z - 36), 7 * scale, 72 * scale); ctx.fillRect(px(x - 36), pz(z + s * 32.5 - 3.5), 72 * scale, 7 * scale); }
+    ctx.fillStyle = '#e7e5cd'; ctx.fillRect(px(x - 1.5), pz(z - 29), 3 * scale, 58 * scale); ctx.fillRect(px(x - 29), pz(z - 1.5), 58 * scale, 3 * scale);
+  }
+  ctx.fillStyle = '#b7cd98';
+  for (const park of world.parks) {
+    if (Math.abs(park.x - cx) > reach || Math.abs(park.z - cz) > reach) continue;
+    ctx.beginPath(); ctx.roundRect(px(park.x - 12), pz(park.z - 12), 24 * scale, 24 * scale, 5); ctx.fill();
+  }
+  for (const b of world.buildings) {
+    if (Math.abs(b.x - cx) > reach || Math.abs(b.z - cz) > reach) continue;
+    const visited = visitedRoofs.has(b.id);
+    ctx.fillStyle = visited ? '#7f9d79' : b.wall; ctx.strokeStyle = visited ? '#5f805d' : '#aab397'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px(b.x - b.w / 2), pz(b.z - b.d / 2), Math.max(2, b.w * scale), Math.max(2, b.d * scale), 2); ctx.fill(); ctx.stroke();
+  }
+  for (const l of world.landmarks) {
+    if (Math.abs(l.x - cx) > reach || Math.abs(l.z - cz) > reach) continue;
+    ctx.fillStyle = MAP_ICON[l.kind] || '#999'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(px(l.x), pz(l.z), 3.6 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  // Where the camera is looking, as a soft wedge; then the cat, pointing where it is headed.
+  ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(-cameraYaw + Math.PI);
+  const cone = ctx.createRadialGradient(0, 0, 3, 0, 0, w * .34);
+  cone.addColorStop(0, 'rgba(255,250,240,.5)'); cone.addColorStop(1, 'rgba(255,250,240,0)');
+  ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, w * .34, Math.PI / 2 - .46, Math.PI / 2 + .46); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // The cat faces (sin h, cos h) in the world, which is (x, +y) on the canvas — so an arrow drawn
+  // pointing down and turned by -h points the way the cat is going.
+  ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(-player.heading);
+  ctx.fillStyle = '#fffaf0'; ctx.beginPath(); ctx.arc(0, 0, 9.5 * k, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cb8b50'; ctx.beginPath(); ctx.arc(0, 0, 7 * k, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3c362c'; ctx.beginPath(); ctx.moveTo(0, 11 * k); ctx.lineTo(-5 * k, 2 * k); ctx.lineTo(0, 4.4 * k); ctx.lineTo(5 * k, 2 * k); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = 'rgba(60,54,44,.62)'; ctx.font = `700 ${Math.round(11 * k)}px "DM Sans", sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', w - 10 * k, 14 * k);
+  // What the little arrow is actually pointing at, so a test (or a curious player) can check it.
+  canvas.dataset.heading = (+player.heading).toFixed(2); canvas.dataset.yaw = (+cameraYaw).toFixed(2);
+}
+
 function drawMap() {
   if (!mapCenter) return; const canvas = $('map-canvas'), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, scale = MAP_SCALE;
   const px = x => (x - mapCenter.x) * scale + w / 2, pz = z => (z - mapCenter.z) * scale + h / 2;
@@ -836,9 +912,8 @@ function drawMap() {
     if (visited) { ctx.fillStyle = '#f4f4df'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✓', px(b.x), pz(b.z) + 5); }
     else { ctx.fillStyle = '#c5a15d'; ctx.beginPath(); ctx.arc(px(b.x), pz(b.z), 2.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  const ICON = { lake: '#7fb3ad', coast: '#6fa3a6', balloons: '#d9544f', market: '#d7a048', works: '#8a6a4c', warehouse: '#8a8072', tower: '#5f6b66', playground: '#d9544f', cafe: '#c88f6e', shop: '#6f9a4f', home: '#b48c9c', station: '#4f7f96', allotments: '#8fb04f', airport: '#5f6b66', bridge: '#4f5a56', yard: '#8a6a4c', signalbox: '#8f5f4e', house: '#b48c9c', worksfloor: '#9a6b55', lobby: '#8fb0b8', depotfloor: '#8a9893' };
   for (const l of world.landmarks) {
-    const seen = visitedPlaces.has(l.id); ctx.fillStyle = ICON[l.kind] || '#999'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
+    const seen = visitedPlaces.has(l.id); ctx.fillStyle = MAP_ICON[l.kind] || '#999'; ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(px(l.x), pz(l.z), seen ? 7 : 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     if (seen) { ctx.fillStyle = '#fffaf0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✓', px(l.x), pz(l.z) + 3.5); }
     if (Math.abs(l.x - mapCenter.x) < 110 && Math.abs(l.z - mapCenter.z) < 70) { ctx.fillStyle = '#5f6b5a'; ctx.font = '600 10px "DM Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(l.name.replace(/^the |^somebody’s /, ''), px(l.x), pz(l.z) + 18); }
@@ -846,7 +921,7 @@ function drawMap() {
   for (const p of people.list) { ctx.fillStyle = p.job ? '#a37c5a' : '#7c8fa6'; ctx.beginPath(); ctx.arc(px(p.x), pz(p.z), 3, 0, Math.PI * 2); ctx.fill(); }
   const x = px(player.pos.x), y = pz(player.pos.z);
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.shadowColor = '#6b775333'; ctx.shadowBlur = 8; ctx.fillStyle = '#cb8b50'; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.save(); ctx.translate(x, y); ctx.rotate(-player.heading); ctx.fillStyle = '#fff9e9'; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-4, -3); ctx.lineTo(4, -3); ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-player.heading); ctx.fillStyle = '#fff9e9'; ctx.beginPath(); ctx.moveTo(0, 9); ctx.lineTo(-4.6, -3.4); ctx.lineTo(4.6, -3.4); ctx.closePath(); ctx.fill(); ctx.restore();
   const rn = visitedRoofs.size, gn = visitedGardens.size, pn = visitedPlaces.size;
   $('map-seed').textContent = 'Seed ' + world.seedText; $('map-description').textContent = `${currentDistrict || districtName(0, 0, world.seed)} · ${rn} rooftop${rn === 1 ? '' : 's'}, ${gn} garden${gn === 1 ? '' : 's'}, ${pn} place${pn === 1 ? '' : 's'}, ${friendsMade} friend${friendsMade === 1 ? '' : 's'}. Drag to look further.`;
 }
@@ -910,6 +985,8 @@ function loop(now) {
     document.body.classList.toggle('settled', playTime > 14);
     if (modal === 'map-modal' && !mapDrag) drawMap();
   }
+  miniTimer += dt;
+  if (miniTimer > 1 / 12 && started && !modal) { miniTimer = 0; drawMinimap(); }
   if (resting) { purrTimer += dt; if (purrTimer > 1.7) { purrTimer = 0; audio.purr(); } }
   renderer.render(scene, camera);
   renderWardrobe(dt);

@@ -301,7 +301,7 @@ export function doorAprons(room, deep = 1.9) {
 // the mesh and the collision set. Crude, but a doorway you cannot walk through is worse than a bare
 // corner, and it works for every kit without touching any of them.
 export function apronShim(W, c, rects, fy) {
-  if (!rects || !rects.length) return [W, c];
+  if (!rects || !rects.length || globalThis.__noApron) return [W, c];
   const hit = (x, z, w, d, y0, y1) => y1 > fy + .06 && y0 < fy + 1.85 && rects.some(k => x + w / 2 > k.minX && x - w / 2 < k.maxX && z + d / 2 > k.minZ && z - d / 2 < k.maxZ);
   const batch = Object.create(c.batch);
   const real = c.batch;

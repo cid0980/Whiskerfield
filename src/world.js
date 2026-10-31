@@ -194,7 +194,7 @@ export const COAST_CZ = -3, SHORE_Z = COAST_CZ * CHUNK - 26, SEA_R = 1e4;
 export const isSeaChunk = cz => cz < COAST_CZ, isCoastChunk = cz => cz === COAST_CZ;
 export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0 && cz > COAST_CZ;
 // The blocks just past either end of a runway: kept clear of anything a plane would fly through.
-export const runwayLane = (cx, cz) => [1, 2].some(d => isAirportChunk(cx - d, cz) || isAirportChunk(cx + d, cz));
+export const runwayLane = (cx, cz) => isAirportChunk(cx - 1, cz) || isAirportChunk(cx + 1, cz);
 export const isStationChunk = (cx, cz) => isRailColumn(cx) && mod(cz, 2) === 0 && cz > COAST_CZ;
 
 export class World {

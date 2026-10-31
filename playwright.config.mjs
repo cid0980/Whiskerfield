@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 120000,
+  timeout: 240000, // software WebGL: a heavy test plus its screenshot can take four minutes
   expect: { timeout: 20000 },
   fullyParallel: false,
   workers: 1,

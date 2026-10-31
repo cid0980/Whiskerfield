@@ -412,7 +412,7 @@ export function makeStation(W, c, x, z, r, id) {
   b.box(x - 4, .02, z, 16, .1, 24, '#b3ab97'); paving(c, x - 4, z, 16, 24, .07);
   c.stations = c.stations || []; c.stations.push({ x: tx, z, platformX: x - 2.5 });
   // Platform, a metre up, with three steps at the near end and a yellow safety line.
-  const pw = 14.6, pd = 20, px = x - 1.7, ph = 1;
+  const pw = 15.1, pd = 20, px = x - 1.45, ph = 1; // edge at x + 6.1: the running board starts there
   b.box(px, ph / 2, z, pw, ph, pd, '#c9bfa6'); W.solid(c, px, ph / 2, z, pw, ph, pd, { kind: 'floor', climbable: false });
   b.box(px + pw / 2 - .35, ph + .01, z, .5, .03, pd, '#e3c35a');
   b.box(px, ph + .005, z, pw - .2, .02, pd - .2, '#d5cbb1');
@@ -601,14 +601,14 @@ export function buildTrain(b) {
   boxes.push({ x: ex, y: ty + 1.5, z: ez, w: 2.6, h: 3.1, d: 7 });
   // Driver: a simple figure at the cab window.
   b.box(ex + .9, ty + 1.7, ez + 2.3, .36, .5, .3, '#4f5d6b'); b.ball(ex + .9, ty + 2.1, ez + 2.3, .14, .16, .14, '#e3b98f'); b.cyl(ex + .9, ty + 2.27, ez + 2.3, .16, .08, '#2f3331');
-  let cz = 3.2; const cl = 10, fy = ty + .61, wallH = 2.25, doorW = 1.3;
+  let cz = 3.2; const cl = 10, fy = ty + .61, wallH = 2.25, doorW = 1.8;
   for (let n = 0; n < 2; n++, cz += cl + .7) {
     const paint = n ? '#6f6252' : '#8f5f4e', trim = '#e8dfc4';
     b.box(ex, ty + .35, cz, 2.6, .5, cl, '#3f4a46'); wheels(cz, 4, cl);
     // Floor (you can walk in), end walls, side walls split round a door in the middle of each side
     // with window holes, running boards under the doors, and a roof you can still ride on.
-    b.box(ex, fy - .08, cz, 2.6, .16, cl, '#4a4f4c'); b.box(ex, fy + .005, cz, 2.3, .01, cl - .3, '#a8947a');
-    boxes.push({ x: ex, y: fy - .08, z: cz, w: 2.6, h: .16, d: cl, kind: 'car', climbable: false });
+    b.box(ex, fy - .08, cz, 2.8, .16, cl, '#4a4f4c'); b.box(ex, fy + .005, cz, 2.5, .01, cl - .3, '#a8947a');
+    boxes.push({ x: ex, y: fy - .08, z: cz, w: 2.8, h: .16, d: cl, kind: 'car', climbable: false });
     for (const e of [-1, 1]) { b.box(ex, fy + wallH / 2, cz + e * (cl / 2 - .04), 2.6, wallH, .08, paint); b.box(ex, fy + 1.4, cz + e * (cl / 2 - .02), .8, .7, .12, '#a9c3c9'); boxes.push({ x: ex, y: fy + wallH / 2, z: cz + e * (cl / 2 - .04), w: 2.6, h: wallH, d: .08, kind: 'wall', climbable: false }); }
     for (const s of [-1, 1]) {
       const wx = ex + s * 1.27;
@@ -619,12 +619,12 @@ export function buildTrain(b) {
         const bays = 2; for (let k = 0; k <= bays; k++) b.box(wx, fy + 1.4, z0 + k * (len / bays), .08, 1.1, k === 0 || k === bays ? .3 : .2, paint); // pillars
         boxes.push({ x: wx, y: fy + wallH / 2, z: zm, w: .08, h: wallH, d: len, kind: 'wall', climbable: false });
         // Two facing benches in each bay, and somebody on most of them.
-        for (let k = 0; k < bays; k++) { const bz = z0 + (k + .5) * (len / bays); for (const f of [-1, 1]) { const sz = bz + f * .78; b.box(wx - s * .5, fy + .25, sz, .7, .1, .44, '#4f7f96'); b.box(wx - s * .5, fy + .6, sz + f * .2, .7, .8, .08, '#4f7f96'); boxes.push({ x: wx - s * .5, y: fy + .25, z: sz, w: .7, h: .5, d: .46, kind: 'seat', climbable: true });
-          if ((k + (f > 0 ? 1 : 0) + n + (s > 0 ? 1 : 0)) % 3 !== 0) { const px = wx - s * .5, pc = ['#c9524a', '#4f7f96', '#6f9a4f', '#d9a53a', '#8f5f4e'][(k * 2 + (f > 0 ? 1 : 0) + n) % 5]; b.box(px, fy + .55, sz, .34, .5, .3, pc); b.ball(px, fy + .98, sz, .13, .15, .13, '#e3b98f'); b.box(px, fy + .35, sz - f * .28, .32, .14, .3, '#4a4f4c'); if (k % 2) b.box(px, fy + .7, sz - f * .22, .22, .3, .04, '#f1e8d2'); } }
+        for (let k = 0; k < bays; k++) { const bz = z0 + (k + .5) * (len / bays); for (const f of [-1, 1]) { const sz = bz + f * .74, sx0 = wx - s * .62; b.box(sx0, fy + .25, sz, .62, .1, .42, '#4f7f96'); b.box(sx0, fy + .6, sz + f * .19, .62, .8, .08, '#4f7f96'); boxes.push({ x: sx0, y: fy + .25, z: sz, w: .62, h: .5, d: .44, kind: 'seat', climbable: true });
+          if ((k + (f > 0 ? 1 : 0) + n + (s > 0 ? 1 : 0)) % 3 !== 0) { const px = wx - s * .62, pc = ['#c9524a', '#4f7f96', '#6f9a4f', '#d9a53a', '#8f5f4e'][(k * 2 + (f > 0 ? 1 : 0) + n) % 5]; b.box(px, fy + .55, sz, .34, .5, .3, pc); b.ball(px, fy + .98, sz, .13, .15, .13, '#e3b98f'); b.box(px, fy + .35, sz - f * .28, .32, .14, .3, '#4a4f4c'); if (k % 2) b.box(px, fy + .7, sz - f * .22, .22, .3, .04, '#f1e8d2'); } }
         }
       }
       b.box(wx, fy + wallH - .12, cz, .08, .26, doorW + .2, paint); boxes.push({ x: wx, y: fy + wallH - .12, z: cz, w: .08, h: .26, d: doorW + .2, kind: 'wall', climbable: false }); // lintel
-      b.box(wx + s * .28, fy - .12, cz, .5, .06, doorW + .6, '#2b2622'); boxes.push({ x: wx + s * .28, y: fy - .12, z: cz, w: .5, h: .06, d: doorW + .6, kind: 'step', climbable: false }); // running board
+      b.box(wx + s * .45, fy - .05, cz, .9, .06, doorW + .9, '#2b2622'); boxes.push({ x: wx + s * .45, y: fy - .05, z: cz, w: .9, h: .06, d: doorW + .9, kind: 'step', climbable: false }); // running board, flush with the floor
     }
     b.box(ex, fy + wallH + .06, cz, 2.3, .03, cl - .4, '#f6ecc8', 0, .6); // ceiling light strip
     b.add(GEO.cylinder, ex, ty + 2.95, cz, 1.45, cl + .1, .45, '#5c6b66', Math.PI / 2);

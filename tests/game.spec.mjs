@@ -815,6 +815,50 @@ test('towns stream in a slice at a time, and the camera holds still in a tight c
   expect(r.maxSwing).toBeLessThan(.25);
 });
 
+test('the cat swims out of the lake and walks onto the train at a door', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, out = {}, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    // ---- the lake: drop in from above and float, then paddle ashore
+    const lake = g.world.water.filter(w => w.r > 10).sort((a, b) => b.r - a.r)[0];
+    g.teleport(lake.x, 3, lake.z); step(120);
+    out.floats = { y: +g.player.pos.y.toFixed(2), swimming: !!g.getState().swimming, grounded: g.getState().grounded };
+    g.hold.y = 1; let n = 0;
+    while (g.getState().swimming && n < 60 * 90) { g.step(1 / 60); n++; }
+    g.hold.y = 0; step(20);
+    out.shore = { seconds: +(n / 60).toFixed(1), swimming: !!g.getState().swimming, y: +g.player.pos.y.toFixed(2), dry: !g.world.inWater(g.player.pos.x, g.player.pos.z) };
+    // ---- the train: stand on the platform in front of a door and walk in
+    g.teleport(50, 1.3, -16.5); step(30);
+    const t = g.train; let k = 0;
+    while (!(t.state === 'stop' && Math.abs(t.z + 16.5) < .5) && k < 60 * 90) { g.step(1 / 60); k++; }
+    const tries = [];
+    for (const dz of [0, .7, -.7]) {
+      g.teleport(60.4, 1.4, t.z + 3.2 + dz); step(20);
+      g.hold.x = 1; step(120); g.hold.x = 0; step(10);
+      tries.push({ support: g.getState().support, y: +g.player.pos.y.toFixed(2) });
+    }
+    out.boarding = tries;
+    // and once inside, the aisle is walkable end to end
+    g.teleport(63, 1.3, t.z + 3.2); step(40);
+    const z0 = g.player.pos.z; g.hold.y = -1; step(120); g.hold.y = 0; step(10);
+    out.aisle = { rode: +(z0 - g.player.pos.z).toFixed(1), still: g.getState().support };
+    return out;
+  });
+  expect(errors).toEqual([]);
+  // Floating, not wading: at the waterline, and it can paddle out onto dry land.
+  expect(r.floats.swimming).toBe(true);
+  expect(r.floats.y).toBeLessThan(.15);
+  expect(r.floats.grounded).toBe(true);
+  expect(r.shore.swimming).toBe(false);
+  expect(r.shore.dry).toBe(true);
+  expect(r.shore.y).toBeGreaterThan(-.05);
+  // Boarding is a walk, not a climb: through the door from the platform, on the car or a seat.
+  for (const b of r.boarding) expect(['car', 'seat', 'floor', 'step'], JSON.stringify(b)).toContain(b.support);
+  expect(r.boarding.filter(b => b.y > .9).length).toBeGreaterThanOrEqual(2);
+  // The aisle runs the length of the carriage.
+  expect(Math.abs(r.aisle.rode)).toBeGreaterThan(3);
+});
+
 test('the minimap: a square of the town with the cat in it, pointing where it is going', async ({ page }) => {
   const errors = await enter(page);
   const r = await page.evaluate(async () => {

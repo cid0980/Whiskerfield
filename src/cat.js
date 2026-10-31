@@ -137,7 +137,7 @@ export class Cat {
   }
 
   update(dt, time, state, groundY, reducedMotion = false) {
-    const { speed = 0, grounded = true, climbing = false, resting = false, vy = 0, turnRate = 0, accel = 0, landImpact = 0, runBlend = 0 } = state;
+    const { speed = 0, grounded = true, climbing = false, resting = false, vy = 0, turnRate = 0, accel = 0, landImpact = 0, runBlend = 0, swimming = false } = state;
     dt = Math.min(dt, .05);
     const moving = speed > .15 && !resting;
     // ---- gaits: a four-beat walk, a diagonal trot, a bounding gallop; blended by speed.
@@ -148,6 +148,8 @@ export class Cat {
     this.climbBlend = damp(this.climbBlend, climbing ? 1 : 0, 10, dt);
     this.squash = damp(this.squash, landImpact, 9, dt);
     this.airBlend = damp(this.airBlend ?? 0, !grounded && !climbing ? 1 : 0, 12, dt);
+    // Swimming: a low, level body with the paws paddling a fast circle, head up out of the water.
+    this.swimBlend = damp(this.swimBlend ?? 0, swimming ? 1 : 0, 6, dt);
     const stride = clamp(speed / 4, 0, 1);
     // ---- idle life: after a while the cat sits, grooms, stretches, looks about.
     const still = grounded && !moving && !climbing && !resting;
@@ -173,9 +175,9 @@ export class Cat {
     const lean = clamp(-turnRate * .045, -.32, .32) * stride;
     const pitch = clamp(-accel * .012, -.16, .16) + (grounded ? 0 : clamp(-vy * .025, -.28, .22));
     const breathe = still ? Math.sin(time * 2.1) * .012 : 0;
-    this.model.rotation.x = -this.climbBlend * 1.12 + pitch * (1 - this.climbBlend) - sit * .48 + st * .36;
+    this.model.rotation.x = -this.climbBlend * 1.12 + pitch * (1 - this.climbBlend) - sit * .48 + st * .36 - this.swimBlend * .06;
     this.model.rotation.z = lean * (1 - this.restBlend) + (moving && grounded ? Math.sin(this.phase) * .018 * stride : 0);
-    this.model.position.y = bob - this.restBlend * .4 - this.squash * .09 - sit * .14 + st * .02 - this.airBlend * .02;
+    this.model.position.y = bob - this.restBlend * .4 - this.squash * .09 - sit * .14 + st * .02 - this.airBlend * .02 - this.swimBlend * .1 + this.swimBlend * Math.sin(time * 3.1) * .012;
     this.model.position.z = -this.climbBlend * .1 + sit * .1;
     // Gallop: the spine flexes and extends; in the air it stretches out.
     const flex = Math.sin(this.phase + .4) * .14 * wGallop * stride * (grounded ? 1 : 0);
@@ -200,7 +202,12 @@ export class Cat {
       } else if (turning) {
         const ph = time * 9 + leg.phase; hipRot = Math.sin(ph) * .18; kneeRot = Math.max(0, Math.cos(ph)) * .35;
       }
-      if (climbing) {
+      if (this.swimBlend > .02) {
+        // Paddling: each paw circles forward and back under the chest, faster than a walk.
+        const sph = time * 11 + leg.phase * 1.3;
+        hipRot = -.25 + Math.sin(sph) * .62; kneeRot = .45 + Math.max(0, Math.cos(sph)) * .5;
+        hipRot = hipRot * this.swimBlend + hipRot * 0; kneeRot = kneeRot * this.swimBlend;
+      } else if (climbing) {
         const cph = this.phase + leg.phase;
         hipRot = -.85 + Math.sin(cph) * .55; kneeRot = .7 + Math.max(0, Math.cos(cph)) * .6;
       } else if (!grounded) {
@@ -230,7 +237,7 @@ export class Cat {
     const lookTarget = still && !reducedMotion ? Math.sin(time * .5) * .12 + glance : -lean * .5 - clamp(turnRate * .05, -.35, .35) * stride;
     this.headLook = damp(this.headLook, lookTarget + (gr ? (act?.side ?? 1) * 1.1 : 0), gr ? 5 : 3, dt);
     this.head.rotation.y = this.headLook + shake;
-    this.head.rotation.x = this.restBlend * .22 + (climbing ? -.25 : 0) - pitch * .55 + Math.sin(this.phase * 2) * .012 * stride + sit * .42 - st * .3 + gr * (.55 + Math.sin(time * 9) * .12) - yawn * .35 + this.airBlend * clamp(-vy * .02, -.25, .2);
+    this.head.rotation.x = this.restBlend * .22 + (climbing ? -.25 : 0) - pitch * .55 - this.swimBlend * .22 + Math.sin(this.phase * 2) * .012 * stride + sit * .42 - st * .3 + gr * (.55 + Math.sin(time * 9) * .12) - yawn * .35 + this.airBlend * clamp(-vy * .02, -.25, .2);
     this.head.rotation.z = (still ? Math.sin(time * .8) * .02 : -lean * .25) + gr * (act?.side ?? 1) * .25;
     // ---- tail: carried high at a walk, streaming at a gallop, flicking when annoyed (turning), curled when sitting.
     this.tailSway = damp(this.tailSway, moving ? Math.sin(this.phase * (wGallop > .5 ? 1 : .7)) * .22 : Math.sin(time * 1.6) * .16, 4, dt);

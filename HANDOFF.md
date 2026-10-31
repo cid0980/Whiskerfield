@@ -125,8 +125,13 @@ bump `package.json` version → delete scratch files → `scripts/push.sh "vX.Y.
   `boat`, `balloon`, `seat`…).
 - `physics.support(x,z,ref)` = highest walkable surface ≤ ref; `physics.ceiling()` ignores roofs/ellipsoids.
 - Water: `world.inWater(x,z)` → circle `{x,z,r}`; the sea is one huge circle (`SHORE_Z=-242`, `SEA_R=1e4`).
-  The cat is blocked at a water edge only when approaching from land and `pos.y<.2`; a cat that lands in
-  water wades slowly. Nothing stops a cat *teleported* or *jumping* into water.
+  Two rules, both in `physics.js::stepPlayer`. (1) From dry land the water's edge is a wall — the cat is
+  pushed back to the rim. (2) A cat that is *in* the water (a jump, a step off a boat) **swims**: it floats
+  at the waterline (`y ≈ .02`, `p.swimming`, `p.grounded` stays true but `support` null), moves at .62× and
+  the step-up logic then lifts it onto the bank, because floating puts the shore inside `CAT.step`. Never
+  leave a swimmer standing on the lake bed: the shore is higher than a step from there, so it can never
+  get out. After 20 s of no input in the water the cat drifts toward the nearest bank by itself (`swimTime`).
+  `p.swimming` is passed to `cat.update` (`swimBlend`: paddling legs, head up, body low).
 
 **World / chunks**
 - `World.theme(cx,cz)` → `sea | coast | rail-coast | square | airport | lake | lanes | market | works |
@@ -187,14 +192,17 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
    stand on top (tall walls defer to the mantle, as before). `resolve()` caps each push at 0.2 m and does
    4 passes. Measured with `scripts/jitter-probe.mjs` (square lane: 1 direction flip and 3.1 rad of
    wobble → 0; east pavement: 2 scrambles/42 airborne steps → 1 car bonnet/12).
-4. **Train walking is hard. [pair B]** Interior is 2.6 m wide with benches as solids; doors 1.3 m; the
-   cat slides off the running board; boarding needs you to be exactly at a door. Plan: widen floor solid,
-   make benches `walkable` tops, add a low lip at doors, make the platform-to-car gap zero, and make the
-   carriage floor carry the cat (already does) with camera interior mode.
-5. **Lake: "I walk in water". [pair B]** The water-edge wall only applies from land and at `y<.2`; jumping
-   or stepping off the jetty/boat puts the cat *in* the lake, where it wades forever. Plan: when in water
-   and not on a solid, swim: buoyancy to `y≈.0`, slow move, auto-climb out onto any surface ≤ .5 m above,
-   and gently push toward the nearest shore after 20 s; also a swim pose in `cat.js`.
+4. **[DONE in 1.7.5, pair B]** Train walking. There were two faults. The station platform ended at
+   `x+5.6` while the carriage's running board began at 5.7 and sat 6 cm *below* the floor, so a cat not
+   exactly at a door stepped into a 0.6 m gap beside a 1 m platform and fell to the track. Fixes: platform
+   edge at `x+6.1` (meets the running board), running board widened to .9 m with its top flush with the
+   carriage floor, doors 1.8 m (boarding now works within ±.9 m of the door centre), floor solid 2.8 m,
+   benches pushed back (`wx - s*.62`, .62 wide) leaving a 1 m aisle. Verified: walking in at the door from
+   the platform lands on `car`/`seat` and the aisle runs the length of a carriage.
+5. **[DONE in 1.7.5, pair B]** Lake: "I walk in water". The cat now *swims* — `afloat` in `stepPlayer`
+   (in water, `y<.34`, no solid footing within .08) → floated to the waterline, .62× speed, `grounded` kept
+   true so the step logic lifts it onto the bank, `swimTime` drift-to-shore after 20 s, and a `swimBlend`
+   paddle in `cat.js`. Test: dropped into the lake it floats at `y .05` and paddles out to dry land in ~6 s.
 6. **Furniture in doorways / furniture looks bad. [pair C]** `furnishHouse` places kits by room rectangle
    without excluding the doorway or window strips. Plan: compute a "no-go" strip in front of every doorway
    (and the path between the two rooms) and reject placements intersecting it; keep ≥ .9 m clear path

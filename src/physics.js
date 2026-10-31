@@ -376,7 +376,15 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
   const analog = amount > .02 ? .32 + .68 * Math.pow(amount, .8) : 0;
   let speed = (input.baseSpeed + (input.sprintSpeed - input.baseSpeed) * p.runBlend) * analog;
   if (input.resting) speed = 0;
-  if (physics.world.inWater(p.pos.x, p.pos.z) && p.pos.y < .2) speed *= .7;
+  // ---- water: the cat swims, it does not wade along the bottom ---------------------------------
+  // The bank keeps a cat out from dry land, but one that lands in the water (a jump, a step off a
+  // boat or a jetty) used to trudge about under the surface forever, because the shore is too high
+  // to step up from the lake bed. A cat floats: it rides at the waterline, where the bank is a step
+  // again, and paddles along a little slower than it walks.
+  const wet = physics.world.inWater(p.pos.x, p.pos.z);
+  const footing = physics.support(p.pos.x, p.pos.z, p.pos.y + .08);
+  const afloat = !!wet && p.pos.y < .34 && (!footing.solid || footing.y < .06) && !p.climbing;
+  if (afloat) speed *= .62;
   const co = Math.cos(input.yaw), si = Math.sin(input.yaw);
   const tx = (ix * co + iz * si) * speed, tz = (-ix * si + iz * co) * speed;
   const oldSpeed = Math.hypot(p.vx, p.vz);
@@ -423,8 +431,27 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
       if (len > EPS) { const nxn = dx / len, nzn = dz / len, into = p.vx * nxn + p.vz * nzn; if (into < 0) { p.vx -= into * nxn; p.vz -= into * nzn; } }
     }
   }
+  p.swimming = afloat;
+  if (afloat) {
+    // Ride the waterline, paddling. `grounded` stays true so the step-up logic can lift the cat out
+    // onto the bank — that is the whole point of swimming rather than wading.
+    const surface = .02;
+    p.pos.y += (surface - p.pos.y) * Math.min(1, 10 * dt);
+    p.vy = 0; p.grounded = true; p.support = null; p.airTime = 0; p.jumpCut = false;
+    p.swimTime = (p.swimTime || 0) + dt;
+    // Twenty seconds with no way out: drift gently toward the nearest bank instead of treading water.
+    if (p.swimTime > 20 && Math.abs(ix) + Math.abs(iz) < .05) {
+      const dx = p.pos.x - wet.x, dz = p.pos.z - wet.z, d = Math.hypot(dx, dz) || 1;
+      p.vx += dx / d * 6 * dt; p.vz += dz / d * 6 * dt;
+      p.speed = Math.hypot(p.vx, p.vz);
+      if (p.speed > .12) { const target = Math.atan2(p.vx, p.vz); p.heading = dampAngle(p.heading, target, 8, dt); }
+      p.distance += p.speed * dt;
+      p.airTime = 0;
+      return { wall, climbed: false };
+    }
+  } else p.swimTime = 0;
   const beforeY = p.pos.y;
-  p.vy = Math.max(-28, p.vy - CAT.gravity * dt);
+  if (!afloat) p.vy = Math.max(-28, p.vy - CAT.gravity * dt);
   let nextY = beforeY + p.vy * dt;
   if (p.vy > 0) {
     const capped = physics.ceiling(beforeY, nextY, p.pos.x, p.pos.z, CAT.height, CAT.radius);

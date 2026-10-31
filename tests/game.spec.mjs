@@ -892,8 +892,9 @@ test('the cat swims out of the lake and walks onto the train at a door', async (
     while (!(t.state === 'stop' && Math.abs(t.z + 16.5) < .5) && k < 60 * 90) { g.step(1 / 60); k++; }
     const tries = [];
     for (const dz of [0, .7, -.7]) {
-      // On the running board under the door, a level camera so hold.x walks in through the opening.
-      g.teleport(61.3, 1.2, t.z + 3.2 + dz); g.setCamera(0); step(20);
+      // On the running board under the door, with the camera already settled level (the view eases
+      // toward a new yaw, and the stick is read against it), so hold.x walks in through the opening.
+      g.teleport(61.3, 1.2, t.z + 3.2 + dz); g.setCamera(0); step(90);
       g.hold.x = 1;
       const seen = new Set(); let high = 0;
       for (let i = 0; i < 120; i++) { g.step(1 / 60); const s = g.getState().support; if (s) seen.add(s); high = Math.max(high, g.player.pos.y); }

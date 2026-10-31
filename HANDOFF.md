@@ -241,6 +241,15 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- Climbing ends where the *head* meets something: an eave overhanging the wall by 10 cm used to stop a
+  climb a paw's width short of the top, so a single-storey roof was unreachable. That branch now looks
+  for a thin lid within reach with headroom above it and hooks over it, and the top-of-wall branch hands
+  the climb on to any higher climbable solid on the same face (`nearbyWall(p.pos, .55, heading, s, .08)`).
+- Tests that grab "the first building within 80 m" depend on chunk streaming order: the same seed picked
+  a 9.3 m house on 1.7.4 and a 3.85 m annexe on 1.7.8. Assert the behaviour (a roof is reached), not the
+  building. And a screenshot at the end of a long deterministic climb needs a longer test timeout (240 s)
+  rather than a faster climb — under software WebGL a frame can take seconds.
+
 - GitHub Pages is built by CI (`.github/workflows/deploy.yml` runs `npm run build` and copies an **explicit
   file list** into `_site`). Adding a new top-level file? Add it to the `cp` line there too, or it 404s on
   the live site. Because CI rebuilds, the live `assets/game.js` md5 differs from your local one by the

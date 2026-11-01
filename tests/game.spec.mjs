@@ -137,9 +137,11 @@ test('the cat is quick, analog input stays useful, and scenery is solid and clim
     out.far = { ...g.getState(), position: g.player.pos.toArray() };
     return out;
   });
-  expect(r.walk).toBeGreaterThan(6.5);
-  expect(r.sprint).toBeGreaterThan(11.5);
-  expect(r.analog).toBeGreaterThan(3);
+  // A cat's legs can only keep up with so much: 5 m/s is a fast trot, 8 a sprint (1.8.1 brought these
+  // down from 7 and 12.5, where the paws skated over the ground at every speed).
+  expect(r.walk).toBeGreaterThan(4.7);
+  expect(r.sprint).toBeGreaterThan(7.7);
+  expect(r.analog).toBeGreaterThan(2.6);
   expect(r.analog).toBeLessThan(r.walk);
   expect(r.stop).toBeLessThan(0.05);
   expect(r.heldJump).toBeGreaterThan(1.2);
@@ -227,7 +229,7 @@ test('landscape phone: fullscreen request, compact HUD without overlap, latching
   const sprint = await page.evaluate(() => { const g = window.__whiskerfield; g.setCamera(0);
     const lane = (() => { for (let x = -60; x <= 60; x += 2) for (let z0 = -60; z0 <= 60; z0 += 2) { let ok = true; for (let z = z0; z > z0 - 46 && ok; z -= 1) for (const s of g.physics.query(x, z, 1.4)) if (s.maxY > .15 && s.minY < 1.2) ok = false; if (ok) return [x, z0]; } return [0, 60]; })();
     g.teleport(lane[0], 0, lane[1]); g.hold.y = -1; for (let i = 0; i < 120; i++) g.step(1 / 60); const s = g.player.speed; g.hold.y = 0; return s; });
-  expect(sprint).toBeGreaterThan(11.5);
+  expect(sprint).toBeGreaterThan(7.7);
   await page.tap('#touch-run');
   await expect(page.locator('#touch-run')).toHaveAttribute('aria-pressed', 'false');
 
@@ -479,7 +481,7 @@ test('places: a café you can walk into, a trampoline that bounces, a market wit
     out.kinds = [...new Set(w.landmarks.map(l => l.kind))].sort();
     // Café: through the front door, onto the floor, and the discovery fires.
     const cafe = w.landmarks.find(l => l.kind === 'cafe' && Math.abs(l.x) < 40);
-    g.teleport(cafe.x, .3, cafe.inside.maxZ + 2.5); step(20); g.setCamera(Math.atan2(0, 1)); g.hold.y = -1; step(140); g.hold.y = 0; g.discover();
+    g.teleport(cafe.x, .3, cafe.inside.maxZ + 2.5); step(20); g.setCamera(Math.atan2(0, 1)); g.hold.y = -1; for (let i = 0; i < 140 && g.player.pos.z > cafe.inside.maxZ - 1.6; i++) g.step(1 / 60); g.hold.y = 0; g.discover(); // stop just inside the door, on the floor
     out.cafe = { z: g.player.pos.z, maxZ: cafe.inside.maxZ, y: g.player.pos.y, places: g.getState().places, support: g.getState().support };
     // Market: stallholders appear at their stalls with the right job, and face their work.
     const market = w.landmarks.find(l => l.kind === 'market' && Math.abs(l.x) < 40);
@@ -791,14 +793,14 @@ test('towns stream in a slice at a time, and the camera holds still in a tight c
     g.setCamera(.6, .3, 5.4); for (let i = 0; i < 40; i++) { step(1); g.settle(1); }
     const view = () => { const q = g.camera.quaternion; return [-2 * (q.x * q.z + q.w * q.y), -2 * (q.y * q.z - q.w * q.x), -(1 - 2 * (q.x * q.x + q.y * q.y))]; };
     let prev = view(), maxSwing = 0, maxSwingIn = 0, flips = 0, prevSwing = 0, steady = 0, steadyFlips = 0, indoorsEver = g.cameraInfo().indoors;
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 260; i++) {
       g.hold.y = -1; g.hold.x = 1;                 // walk into the wall and keep pushing
       step(1); g.settle(1);
       const now = view(), dot = Math.max(-1, Math.min(1, now[0] * prev[0] + now[1] * prev[1] + now[2] * prev[2]));
       const swing = Math.acos(dot); maxSwing = Math.max(maxSwing, swing);
       if (swing > .12 && prevSwing > .12) flips++;
       // The last third is the cat pressed against the wall, going nowhere: by then the view must be still.
-      if (i > 120) { steady = Math.max(steady, swing); if (swing > .12) steadyFlips++; }
+      if (i > 200) { steady = Math.max(steady, swing); if (swing > .12) steadyFlips++; } // by now the cat is pinned on the wall
       if (g.cameraInfo().indoors) { indoorsEver = true; maxSwingIn = Math.max(maxSwingIn, swing); }
       prevSwing = swing; prev = now;
     }
@@ -872,6 +874,50 @@ test('front doors are clear of furniture, and the tower stairs are real stairs',
   expect(r.stairs.top).toBeGreaterThan(3.2);
   expect(r.stairs.scrambled, JSON.stringify(r.stairs)).toBe(0);
   expect(r.stairs.drops, JSON.stringify(r.stairs)).toBe(0);
+});
+
+test('a boat carries the cat without shaking it about, however it is steered', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield;
+    const boat = [...g.vehicles.list.values()].find(v => v.kind === 'boat');
+    const lake = g.world.water.slice().sort((a, b) => b.r - a.r)[0];
+    g.teleport(boat.x, 1.2, boat.z); for (let i = 0; i < 40; i++) g.step(1 / 60);
+    const boarded = g.getState().support;
+    const supports = new Set([boarded]);
+    let prevRoll = boat.group.rotation.z, prevCat = g.player.pos.clone(), prevBoat = { x: boat.x, z: boat.z };
+    let maxRollStep = 0, maxRel = 0, fastest = 0, aboardFrames = 0, frames = 0; const ys = [];
+    const sample = () => {
+      const roll = boat.group.rotation.z;
+      if (frames > 2) maxRollStep = Math.max(maxRollStep, Math.abs(roll - prevRoll));
+      const bx = boat.x - prevBoat.x, bz = boat.z - prevBoat.z, cx = g.player.pos.x - prevCat.x, cz = g.player.pos.z - prevCat.z;
+      // Standing still on deck, the cat must ride *with* the hull (its own walking is not drift).
+      if (g.player.speed < .2 && frames > 4) maxRel = Math.max(maxRel, Math.hypot(cx - bx, cz - bz));
+      fastest = Math.max(fastest, boat.speed);
+      const s = g.getState().support; if (s) supports.add(s);
+      if (frames > 4 && s === 'boat') { ys.push(g.player.pos.y); aboardFrames++; }
+      frames++; prevRoll = roll; prevCat = g.player.pos.clone(); prevBoat = { x: boat.x, z: boat.z };
+    };
+    // Point the boat at open water, in four different directions, and let it run on between taps: a
+    // boat keeps going once you have pointed it, so the stick is only tapped to change the heading.
+    const home = Math.atan2(-(lake.x - boat.x), -(lake.z - boat.z));
+    for (const offset of [-.7, .7, 0, -1.2]) {
+      g.setCamera(home + offset);
+      g.hold.y = -1;
+      for (let i = 0; i < 14; i++) { sample(); g.step(1 / 60); }
+      g.hold.y = 0;
+      for (let i = 0; i < 48; i++) { sample(); g.step(1 / 60); }
+    }
+    return { boarded, supports: [...supports], fastest: +fastest.toFixed(1), maxRollStep: +maxRollStep.toFixed(3), maxRel: +maxRel.toFixed(3), ySpread: ys.length ? +(Math.max(...ys) - Math.min(...ys)).toFixed(3) : 9, aboardFrames, frames };
+  });
+  expect(errors).toEqual([]);
+  expect(r.boarded).toBe('boat');
+  expect(r.fastest).toBeGreaterThan(2);            // the stick really is steering the boat
+  expect(r.supports).toEqual(['boat']);            // and the cat stays aboard, without slipping through
+  expect(r.aboardFrames).toBeGreaterThan(r.frames * .9);
+  expect(r.maxRel).toBeLessThan(.05);              // it rides with the hull: a hard turn shifts it a few cm, no more
+  expect(r.ySpread).toBeLessThan(.03);             // and no bobbing up and down through the planks
+  expect(r.maxRollStep).toBeLessThan(.02);         // no frame-to-frame rocking (was ~.35 on every steer)
 });
 
 test('the cat swims out of the lake and walks onto the train at a door', async ({ page }) => {

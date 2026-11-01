@@ -1,0 +1,20 @@
+// The cat as a player sees it: standing, running, sitting.
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch({ args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 700, height: 480 } });
+page.setDefaultTimeout(200000);
+await page.goto('http://localhost:3000/?test=1&seed=moss-424');
+await page.waitForFunction(() => window.__whiskerfield?.getState().ready);
+await page.click('#start-button');
+await page.waitForFunction(() => getComputedStyle(document.getElementById('welcome')).opacity === '0');
+await page.evaluate(() => { const g = window.__whiskerfield; g.teleport(0, .3, 4); g.setCamera(.4, .28, 3.4); for (let i = 0; i < 40; i++) g.step(1 / 60); });
+await page.waitForTimeout(400);
+await page.screenshot({ path: '../screenshots/play-stand.png' });
+await page.evaluate(() => { const g = window.__whiskerfield; g.hold.y = -1; for (let i = 0; i < 46; i++) g.step(1 / 60); });
+await page.waitForTimeout(300);
+await page.screenshot({ path: '../screenshots/play-run.png' });
+await page.evaluate(() => { const g = window.__whiskerfield; g.hold.y = 0; for (let i = 0; i < 30; i++) g.step(1 / 60); });
+await page.evaluate(() => document.getElementById('rest-button').click());
+await page.waitForTimeout(1600);
+await page.screenshot({ path: '../screenshots/play-rest.png' });
+await browser.close();

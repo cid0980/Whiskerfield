@@ -87,6 +87,20 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.1** – The cat is a cat, and it moves like one. Its body is now one tapered length along a curved
+  spine — deep at the chest, tucked at the waist — with a neck that carries the head clear of the
+  shoulders, almond eyes set into the skull, smaller ears, tapered legs with real thighs and paws, and a
+  smooth tail carried up and curled. The tabby coat is painted into the fur: bands across the back, a pale
+  belly, and no more stripes glued on as tubes. Legs keep pace with the ground: the gait is derived from
+  the actual speed (a four-beat walk, a diagonal trot, a bounding gallop) instead of a fixed cadence, so
+  the paws plant where they land, and the cat's top speed came down to 5 m/s walking and 8 sprinting,
+  which is what a cat's legs can keep up with. Movement now follows where the *view* is pointed rather
+  than where the camera has eased to, so flicking the mouse and pushing the stick together sends the cat
+  the way you are looking. Lying down is a sphinx pose again, with the paws on the floor. And a boat no
+  longer shakes: it used to roll by a fifth of a radian in whatever direction the heading error happened
+  to point, which flipped sign every frame while you steered — it banks into a turn and eases back out,
+  its deck is a run of round platforms so the cat rides the hull instead of an axis-aligned box that swung
+  out from under it, and a cat aboard no longer bobs or slides.
 - **1.8.0** – The towns, the trains, the planes, the water and the people all get their polish. Ten
   reports from the owner, fixed in pairs, each pushed on its own: the camera is one orbit rig that pulls
   in rather than through walls, knows when it is inside a room, and never shakes when the cat is cornered;

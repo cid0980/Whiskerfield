@@ -19,7 +19,9 @@ const clamp = THREE.MathUtils.clamp;
 const SAVE_KEY = 'whiskerfield.journey.v1';
 const VERSION = '1.3';
 const mobile = platform.coarse;
-const BASE_SPEED = 7, SPRINT_SPEED = 12.5, STEP = 1 / 90, MAP_SCALE = 3.15;
+// Speeds a cat's legs can actually keep up with: 5 m/s is a fast trot, 8 a sprint. At 7 and 12.5 the
+// paws skated over the ground because no cadence could keep up.
+const BASE_SPEED = 5, SPRINT_SPEED = 8, STEP = 1 / 90, MAP_SCALE = 3.15;
 const params = new URLSearchParams(location.search);
 const defaultSeed = () => ['clover', 'willow', 'honey', 'fern', 'peach', 'moss'][Math.floor(Math.random() * 6)] + '-' + Math.floor(100 + Math.random() * 900);
 let saved = null;
@@ -520,8 +522,11 @@ function simulate(dt) {
   const amount = Math.hypot(ix, iz);
   if (amount > .15 && resting) { resting = false; document.body.classList.remove('resting'); $('rest-button').setAttribute('aria-pressed', 'false'); }
   // On a boat, the stick points the boat (unless it points at dry land, when the cat just walks).
-  const steering = vehicles.control(player.support, ix, iz, cameraYaw);
-  input.x = steering ? 0 : ix; input.y = steering ? 0 : iz; input.yaw = cameraYaw;
+  // Where the *view is pointed* right now, not where the camera has eased to: move the mouse and
+  // push the stick together and the cat goes the way you are looking, not the way it was a moment ago.
+  const aimYaw = cameraYawTarget;
+  const steering = vehicles.control(player.support, ix, iz, aimYaw);
+  input.x = steering ? 0 : ix; input.y = steering ? 0 : iz; input.yaw = aimYaw;
   input.sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || touchRun || gamepadRun || hold.sprint;
   input.jump = input.jump || jumpQueued; jumpQueued = false; input.jumpHeld = jumpHeld || hold.jumpHeld;
   const explicitClimb = keys.has('KeyE') || touchClimb || gamepadClimb || hold.climb;

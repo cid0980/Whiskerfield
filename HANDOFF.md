@@ -246,6 +246,29 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **The cat's gait has to be derived from the ground speed.** `Cat.update` used a fixed cadence
+  (`speed / strideLen * .9`), which at 7 m/s asked for 1.1 gait cycles a second while the legs were
+  swinging 2 m/s worth of ground — the paws skated. It is now `cadence = speed / strideLen` cycles a
+  second, capped at 9, with `strideLen` ≈ the distance the feet actually travel in one cycle
+  (walk .40 m, trot .57, gallop .67), and the leg swing amplitudes are set big enough to cover it.
+  The speeds had to come down with it: `BASE_SPEED` 7 → 5, `SPRINT_SPEED` 12.5 → 8. If you raise them
+  again, raise the swing amplitudes or the cap and watch the feet.
+- **The camera eases, the input must not.** `cameraYaw` is damped toward `cameraYawTarget`, so steering
+  the cat by the eased yaw means a flick of the mouse sends it the *old* way for a fifth of a second.
+  `simulate()` and `vehicles.control()` use `cameraYawTarget`.
+- **A boat must not roll by the heading error.** `rotation.z = ... + turn * 8` looked like a bank but
+  it flips sign the instant the error crosses zero — the whole boat (and the cat on it) shook while
+  steering. Bank from the *angular velocity*, damped (`v.bank`), and keep the deck solids
+  rotation-invariant: a deck made of axis-aligned boxes swings out from under a turning cat, so the
+  deck is now a run of cylinder platforms down the keel (`deckSolid`).
+- **The cat's rest pose is a sphinx.** The old pose folded the legs up under a body dropped .4, which
+  only worked with the old stub legs; with real legs the knees went through the floor. The body settles
+  .42 and the legs lie out flat (front hip −1.5, hind +1.5), which puts every paw on the ground.
+  Measure it: `cat.legs[i].paw.getWorldPosition()` minus `player.pos.y` must be ≈ 0.
+- **`python str.replace` in a patch script: always `assert old in text` first.** A whole-block rewrite
+  of the cat constructor silently reverted the `mounts` line that a later patch was meant to change, and
+  the collar stayed a hoop around the chest through three rebuilds. (Second time this has bitten.)
+
 - Climbing ends where the *head* meets something: an eave overhanging the wall by 10 cm used to stop a
   climb a paw's width short of the top, so a single-storey roof was unreachable. That branch now looks
   for a thin lid within reach with headroom above it and hooks over it, and the top-of-wall branch hands

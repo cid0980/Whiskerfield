@@ -10,6 +10,8 @@
 import * as THREE from 'three';
 import { Batch, GEO } from './world.js';
 
+const damp = THREE.MathUtils.damp, clamp = THREE.MathUtils.clamp;
+
 const TAU = Math.PI * 2;
 const BALLOON = { boardDelay: 2.2, climb: 1.7, sink: 1.4, wind: 3.2, high: [30, 44], drift: [45, 72], dwell: 6 };
 const BOAT = { speed: 4.6, accel: 5.5, brake: 4, turn: 2.6, bow: 2.1 };
@@ -25,6 +27,10 @@ export class Vehicles {
   solid(v, lx, ly, lz, w, h, d, kind, climbable) {
     const s = { shape: 'box', kind, vehicle: v, climbable, x: 0, z: 0, r: Math.max(w, d) / 2 + .2, local: { x: lx, y: ly, z: lz, w, h, d }, minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
     if (v.kind === 'balloon') s.balloon = v; else s.boat = v;
+    return s;
+  }
+  deckSolid(v, lx, ly, lz, r) {
+    const s = { shape: 'cylinder', kind: 'boat', vehicle: v, boat: v, climbable: true, x: 0, z: 0, r, local: { x: lx, y: ly, z: lz, w: r * 2, h: .42, d: r * 2 }, minY: 0, maxY: 0 };
     return s;
   }
   // ---- balloons -------------------------------------------------------------------------------
@@ -70,8 +76,10 @@ export class Vehicles {
     // Foam at the stern while under way.
     const wake = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.4), new THREE.MeshBasicMaterial({ color: '#f3f1ea', transparent: true, opacity: 0, depthWrite: false })); wake.rotation.x = -Math.PI / 2; wake.position.set(0, .02, 2.6); group.add(wake);
     const v = { kind: 'boat', spec, group, wake, x: spec.x, z: spec.z, y: 0, heading: spec.heading, target: spec.heading, speed: 0, throttle: 0, home: true, sway: Math.random() * TAU, dx: 0, dz: 0, dy: 0, steered: false };
-    // The deck is a run of squares along the keel, so a turned boat still has a deck roughly its own shape.
-    v.solids = [-1.2, -.6, 0, .6, 1.2].map(lz => this.solid(v, 0, .12, lz, 1.5, .42, 1.5, 'boat', true));
+    // The deck is a run of *round* platforms along the keel: a circle does not care which way the hull
+    // is pointing, so a turning boat never has the cat standing on a corner of an axis-aligned box
+    // that swung out from under it.
+    v.solids = [-1.15, -.55, 0, .55, 1.15].map(lz => this.deckSolid(v, 0, .12, lz, .78));
     this.physics.dynamic.push(...v.solids); this.place(v);
     return v;
   }
@@ -83,7 +91,11 @@ export class Vehicles {
     } else {
       v.group.position.set(v.x, v.y, v.z); v.group.rotation.y = v.heading;
       const si = Math.sin(v.heading), co = Math.cos(v.heading);
-      for (const s of v.solids) { const l = s.local; s.x = v.x + l.z * si; s.z = v.z + l.z * co; s.minX = s.x - l.w / 2; s.maxX = s.x + l.w / 2; s.minZ = s.z - l.d / 2; s.maxZ = s.z + l.d / 2; s.minY = l.y - l.h / 2 - .1; s.maxY = l.y + l.h / 2; }
+      for (const s of v.solids) {
+        const l = s.local; s.x = v.x + l.z * si; s.z = v.z + l.z * co;
+        s.minX = s.x - l.w / 2; s.maxX = s.x + l.w / 2; s.minZ = s.z - l.d / 2; s.maxZ = s.z + l.d / 2;
+        s.minY = l.y - l.h / 2 - .1; s.maxY = l.y + l.h / 2;
+      }
     }
   }
   remove(v) { this.scene.remove(v.group); if (v.tether) this.scene.remove(v.tether); const d = this.physics.dynamic; for (const s of v.solids) { const i = d.indexOf(s); if (i >= 0) d.splice(i, 1); } }
@@ -170,7 +182,15 @@ export class Vehicles {
     // Carry the cat round with the hull: its offset from the keel turns with the heading.
     if (aboard) { const rx = cat.x - ox, rz = cat.z - oz, dh = v.heading - oh, co = Math.cos(dh), si = Math.sin(dh); const tx = rx * co + rz * si, tz = -rx * si + rz * co; v.dx = v.x - ox + (tx - rx); v.dz = v.z - oz + (tz - rz); } else { v.dx = v.dz = 0; }
     v.dy = 0; this.place(v);
-    v.group.position.y = Math.sin(this.time * 1.4 + v.sway) * .025; v.group.rotation.x = Math.sin(this.time * 1.1 + v.sway) * .02 - v.speed * .02; v.group.rotation.z = Math.sin(this.time * 1.7 + v.sway) * .025 + turn * 8;
+    // A boat leans *into* a turn and eases back out of it. The old roll was `turn * 8`, i.e. a fifth of
+    // a radian that flipped sign every time the heading error crossed zero, which shook the whole boat
+    // (and the cat standing on it) while you steered.
+    const yawRate = turn / Math.max(dt, 1e-4);
+    v.bank = damp(v.bank ?? 0, clamp(-yawRate * .09, -.16, .16), 3.4, dt);
+    v.pitch = damp(v.pitch ?? 0, v.speed * .012, 3, dt);
+    v.group.position.y = Math.sin(this.time * 1.4 + v.sway) * .022;
+    v.group.rotation.x = Math.sin(this.time * 1.1 + v.sway) * .014 - v.pitch;
+    v.group.rotation.z = Math.sin(this.time * 1.7 + v.sway) * .016 + v.bank;
     v.wake.material.opacity = Math.min(.5, v.speed * .18);
   }
 }

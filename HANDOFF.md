@@ -246,6 +246,28 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **Decoration is drawn, not solid: `batch.trim(...)` marks a primitive as `deco`.** The flags ride
+  along on `batch.items` (`items.deco`) and `autoColliderSteps` skips them, so a chair can have
+  slatted legs and a cushion without turning into thirteen colliders. Use `trim` for anything a
+  piece's own explicit solid already covers — legs, rails, cushions, aprons, floorboards, skirtings.
+  `apronShim` wraps `trim` too, or a piece dropped from a doorway would leave its legs floating.
+- **A cosmetic rewrite must not change the number of `r()` draws in a kit.** The world is generated
+  from one seeded stream: dropping two `pick(r, …)` calls shifted every later chunk and two unrelated
+  tests failed on a layout that had nothing to do with the change (*front doors are clear of
+  furniture*, *towns stream in a slice at a time*). When you replace a stretch of kit code, count the
+  draws and spend the same number on something you actually want (the sofa's throw cushions are
+  exactly the two draws the old inline sofa spent).
+- **Furniture is built from `shade()`-ed tones of one colour, not from a single flat colour.** A
+  cushion a shade off its sofa, an apron a shade off its table top — that is what stops a pile of
+  boxes reading as a pile of boxes. `shade` is exported from `rooms.js`; `sofa()` is exported too so
+  `places.js` uses the same one rather than building its own.
+- **`table()` takes a height now (`hh`, default .78) and the solid follows it.** A low table is a low
+  table; do not reach for a lowered `y` to make a piece smaller — that sinks its legs through the
+  floorboards, and `tests/game.spec.mjs` → *furniture stands on the floor* will catch it.
+- **`hollow()` takes a `base` (the walkable floor top) as its last argument.** Walls start at y0 = 0
+  but the floor is at .42 in a house, so trims drawn relative to y0 end up buried. Pass `fy` (or
+  `.07` for a works floor, `lobbyH` at the airport); the skirting, dado rail and cornice are drawn
+  per wall segment, so they already stop at doorways.
 - **The structure pass is in progress, one piece at a time, each pushed on its own.** Done so far:
   the sea is a bounded bay (1.8.4), the railway bends and the train turns (1.8.5), roof eaves with
   fascia and gutters, and the café awning rebuilt (1.8.6). Still to do, roughly in the order the owner

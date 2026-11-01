@@ -87,6 +87,18 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.7** – Furniture that looks like furniture, and rooms that look lived in. Chairs were a slab
+  with a board behind it; they now have a seat frame with a cushion on it, tapered legs, and a back of
+  two uprights and three rails. Tables got an apron, a stretcher and feet. Sofas got a plinth, a seat
+  cushion per place, back cushions, arms with a roll along the top and feet — and the armchair in the
+  sitting room is the same sofa at one place wide, so it has cushions too. Beds are a frame on legs
+  with a mattress, a duvet turned down at the pillows, a throw at the foot and a headboard. Every
+  room has floorboards (seams and a border strip) instead of one painted rectangle, a skirting board
+  that stops at the doorways, a dado rail and a cornice. The nursery's little table is a low table
+  now rather than a table sunk a hand's depth into the floor. All that shaping costs nothing in the
+  physics: a piece's solid is still one box, and the legs, slats, cushions, aprons and duvets are
+  drawn as decoration that never becomes a collider — so the cat walks the same line past a chair it
+  always did, and the camera in a tight corner no longer catches on a chair leg.
 - **1.8.6** – The structure pass begins with roofs and shopfronts, the two things that were worst.
   Every pitched roof now has boarded eaves: a fascia lip along both edges with a half-round gutter
   hung under it, so a roof reads as built rather than as the edge of a sheet. And the café's awning —

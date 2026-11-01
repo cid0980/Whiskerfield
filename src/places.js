@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO, railAt, railHeading, railOffset } from './world.js';
-import { hollow, doorway, KITS, PLACE_NAMES, apronShim, person as roomPerson } from './rooms.js';
+import { hollow, doorway, KITS, PLACE_NAMES, apronShim, person as roomPerson, sofa } from './rooms.js';
 
 // Landmark lots. Each function fills one 24 x 24 m lot centred on (x, z) in chunk `c`.
 // They draw with c.batch (merged static geometry), register colliders through the World helpers,
@@ -116,7 +116,7 @@ export function makeFactory(W, c, x, z, r, id) {
   // The shed is hollow: brick walls round a works floor, with the big sliding door open.
   const building = { id, x: fx, z: fz, w, d, h, roofType: 2, roofRise: 0, wall: brick, roofColor: '#7b8a86', cx: c.cx, cz: c.cz, kind: 'roof', body: null };
   c.buildings.push(building);
-  const inside = hollow(W, c, fx, fz, w, d, 0, h, .4, { side: 3, u: 1, width: 4, height: 4.2 }, brick, { buildingId: id, building });
+  const inside = hollow(W, c, fx, fz, w, d, 0, h, .4, { side: 3, u: 1, width: 4, height: 4.2 }, brick, { buildingId: id, building }, null, .07);
   b.box(fx, h - .15, fz, w - .2, .3, d - .2, '#6c7873'); building.body = W.solid(c, fx, h - .15, fz, w, .3, d, { kind: 'roof', buildingId: id, building, climbable: false });
   worksFloor(W, c, fx, fz, inside, .07, r, id);
   for (let f = 0; f < 2; f++) b.box(fx, 2.6 + f * 2.4, fz, w + .1, .18, d + .1, '#7d564a');
@@ -179,9 +179,9 @@ export function makeTower(W, c, x, z, r, id, tall = 1) {
   const lobbyH = fh + .3, top = h + .3, t = .3;
   const building = { id, x, z, w, d, h: top, roofType: 2, roofRise: 0, wall: glass, roofColor: '#9aa49c', cx: c.cx, cz: c.cz, kind: 'roof', body: null };
   c.buildings.push(building);
-  hollow(W, c, x, z, w, d, lobbyH, top, t, null, glass, { buildingId: id, building });
+  hollow(W, c, x, z, w, d, lobbyH, top, t, null, glass, { buildingId: id, building }, null, lobbyH);
   b.box(x, top - .1, z, w, .2, d, '#9aa49c'); W.solid(c, x, top - .1, z, w, .2, d, { kind: 'roof', climbable: false, buildingId: id, building });
-  const lobby = hollow(W, c, x, z, w, d, .29, lobbyH, t, { side: 0, u: 0, width: 2.6, height: 2.9 }, glass, { buildingId: id, building });
+  const lobby = hollow(W, c, x, z, w, d, .29, lobbyH, t, { side: 0, u: 0, width: 2.6, height: 2.9 }, glass, { buildingId: id, building }, null, .29);
   b.box(x, .3, z, w - .6, .04, d - .6, '#cfc8b4');
   lobbyFloor(W, c, x, z, { ...lobby, minZ: lobby.minZ + 3.6 }, .32, r, id, frame);
   // Shaft in the back-right corner, stair strip along the back wall to its left.
@@ -394,7 +394,7 @@ export function makeInterior(W, c, x, z, r, id, kind) {
   } else {
     // Home: sofa, armchair, rug, TV, bookshelf, kitchen counter, dining table, bed in the corner.
     b.box(x + 1, fy + .02, z + .5, 3.5, .03, 2.4, '#b48c9c');
-    b.box(x + 1, fy + .3, z + 1.5, 2.4, .6, .9, '#8ea48c'); b.box(x + 1, fy + .75, z + 1.85, 2.4, .5, .25, '#8ea48c'); for (const s of [-1, 1]) b.box(x + 1 + s * 1.1, fy + .5, z + 1.5, .2, .4, .9, '#8ea48c'); W.solid(c, x + 1, fy + .35, z + 1.5, 2.4, .7, .9, { climbable: false, kind: 'sofa' });
+    sofa(W, c, x + 1, fy, z + 1.5, Math.PI, 2.4, '#8ea48c');
     b.box(x + 1, fy + .25, z - .3, 1, .5, .6, '#8d7f67'); b.box(x + 1, fy + .5, z - .3, .9, .04, .5, '#e3dcc6'); W.solid(c, x + 1, fy + .27, z - .3, 1, .54, .6, { climbable: false, kind: 'table' });
     b.box(x + 1, fy + .25, z - 2.6, 1.6, .5, .45, '#6d5a44'); b.box(x + 1, fy + 1.05, z - 2.6, 1.5, .9, .06, '#2f3331'); b.box(x + 1, fy + 1.05, z - 2.6 + .035, 1.3, .7, .01, '#a9c3c9'); W.solid(c, x + 1, fy + .25, z - 2.6, 1.6, .5, .45, { climbable: false, kind: 'cabinet' });
     const ax = x + 3.6, az = z - .2; b.box(ax, fy + .3, az, .9, .6, .9, '#c88f6e'); b.box(ax + .35, fy + .75, az, .2, .5, .9, '#c88f6e'); W.solid(c, ax, fy + .35, az, .9, .7, .9, { climbable: false, kind: 'chair' });
@@ -418,7 +418,7 @@ export function makeWarehouse(W, c, x, z, r, id) {
   b.box(x, .02, z, 24, .1, 24, '#b6ad99'); paving(c, x, z, 24, 24, .07);
   const building = { id, x: x - 2, z, w, d, h, roofType: 2, roofRise: 0, wall: color, roofColor: '#7b8a86', cx: c.cx, cz: c.cz, kind: 'roof', body: null };
   c.buildings.push(building);
-  const inside = hollow(W, c, x - 2, z, w, d, 0, h, .35, { side: 0, u: 0, width: 3.6, height: 3.8 }, color, { buildingId: id, building });
+  const inside = hollow(W, c, x - 2, z, w, d, 0, h, .35, { side: 0, u: 0, width: 3.6, height: 3.8 }, color, { buildingId: id, building }, null, .07);
   b.box(x - 2, h - .15, z, w - .2, .3, d - .2, '#6c7873'); building.body = W.solid(c, x - 2, h - .15, z, w, .3, d, { kind: 'roof', buildingId: id, building, climbable: false });
   depotFloor(W, c, x - 2, z, inside, .07, r, id);
   for (let k = 0; k < 7; k++) b.box(x - 2 - w / 2 + 1 + k * 2.3, h / 2, z + d / 2 + .05, .14, h, .12, '#6c7873');
@@ -822,7 +822,7 @@ function lobbyFloor(W, c, x, z, inside, fy, r, id, frame) {
   const dx = x, dz = inside.minZ + 1.8; b.box(dx, fy + .55, dz, 4.2, 1.1, .9, '#5f6b66'); b.box(dx, fy + 1.12, dz, 4.3, .06, 1, '#e3dcc6'); b.box(dx, fy + .6, dz - .46, 4, .3, .02, '#c9a35c'); W.solid(c, dx, fy + .58, dz, 4.3, 1.18, 1, { climbable: false, kind: 'counter' });
   b.box(dx + 1.2, fy + 1.3, dz, .5, .35, .05, '#2f3331'); b.cyl(dx - 1.2, fy + 1.25, dz, .14, .25, '#6f9a4f'); roomPerson(c, dx, dz - 1, 0, 'suit', fy);
   for (const s of [-1, 1]) { const lx = x + s * 1.3, lz = inside.minZ + .3; b.box(lx, fy + 1.15, lz, 1.2, 2.3, .14, '#8a9893'); b.box(lx, fy + 1.15, lz + .08, .04, 2.1, .02, '#4a4f4c'); b.box(lx, fy + 2.4, lz, 1.4, .18, .22, '#4a4f4c'); } b.box(x, fy + 1.1, inside.minZ + .36, .14, .2, .04, '#e9c04b'); // lifts
-  for (const s of [-1, 1]) { const sx = x + s * (w / 2 - 1.3), sz = z + 1; b.box(sx, fy + .25, sz, .9, .5, 2.6, '#4f7f96'); b.box(sx + s * .35, fy + .65, sz, .2, .4, 2.6, '#4f7f96'); W.solid(c, sx, fy + .3, sz, .9, .6, 2.6, { climbable: false, kind: 'sofa' }); b.cyl(sx - s * 1.2, fy + .36, sz, .5, .06, '#e3dcc6'); b.cyl(sx - s * 1.2, fy + .15, sz, .08, .3, '#4a4f4c'); W.cylinderSolid(c, sx - s * 1.2, fy, sz, .5, .4, { climbable: false, kind: 'table' }); }
+  for (const s of [-1, 1]) { const sx = x + s * (w / 2 - 1.3), sz = z + 1; sofa(W, c, sx, fy, sz, -s * Math.PI / 2, 2.6, '#4f7f96'); b.cyl(sx - s * 1.2, fy + .36, sz, .5, .06, '#e3dcc6'); b.cyl(sx - s * 1.2, fy + .15, sz, .08, .3, '#4a4f4c'); W.cylinderSolid(c, sx - s * 1.2, fy, sz, .5, .4, { climbable: false, kind: 'table' }); }
   roomPerson(c, x - (w / 2 - 1.3), z + 1.6, Math.PI / 2, 'suit', fy, 'sit');
   b.add(GEO.pot, inside.minX + .9, fy + .35, inside.maxZ - .9, .45, .7, .45, '#5f6b66'); for (let k = 0; k < 6; k++) b.box(inside.minX + .9 + Math.cos(k * 1.1) * .2, fy + 1.3 + k * .06, inside.maxZ - .9 + Math.sin(k * 1.1) * .2, .16, .9, .05, '#5f7f4a', 0, -k * 1.1, Math.cos(k) * .5);
   b.box(inside.maxX - .2, fy + 1.6, z - 1, .05, 1.6, 1.1, '#2f3331'); for (let k = 0; k < 7; k++) b.box(inside.maxX - .24, fy + 2.25 - k * .2, z - 1, .02, .08, .8, k % 2 ? '#e9e3d2' : '#c9a35c'); // directory

@@ -1264,3 +1264,36 @@ test('the line bends, the train turns with it, and a cat aboard goes round the b
   expect(r.ridden).toBeGreaterThan(600);
   expect(r.worstDrift).toBeLessThan(4);
 });
+
+test('furniture stands on the floor: no floating tables, no chairs sunk into the boards', async ({ page }) => {
+  test.setTimeout(240000);
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, kinds = ['chair', 'table', 'sofa', 'bed'], step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    const houses = g.world.landmarks.filter(l => l.kind === 'house').slice(0, 8);
+    const floated = [], sunk = [], seen = new Set();
+    let pieces = 0;
+    for (const h of houses) {
+      g.teleport(h.x, .6, h.z); step(40);
+      const fy = h.y ?? .42;
+      const inn = h.inside;
+      for (const s of g.physics.query(h.x, h.z, 9)) {
+        if (!kinds.includes(s.kind)) continue;
+        // Only the pieces actually in this house's rooms: a chair on the market square has its own floor.
+        const mx = (s.minX + s.maxX) / 2, mz = (s.minZ + s.maxZ) / 2;
+        if (mx < inn.minX - .2 || mx > inn.maxX + .2 || mz < inn.minZ - .2 || mz > inn.maxZ + .2) continue;
+        const key = s.kind + ':' + Math.round((s.minX + s.maxX) * 4) + ':' + Math.round((s.minZ + s.maxZ) * 4);
+        if (seen.has(key)) continue; seen.add(key);
+        pieces++;
+        if (s.minY > fy + .16) floated.push({ kind: s.kind, minY: +s.minY.toFixed(2) });
+        if (s.minY < fy - .16) sunk.push({ kind: s.kind, minY: +s.minY.toFixed(2) });
+      }
+    }
+    return { pieces, houses: houses.length, floated: floated.slice(0, 6), sunk: sunk.slice(0, 6) };
+  });
+  expect(errors).toEqual([]);
+  expect(r.houses).toBeGreaterThanOrEqual(6);
+  expect(r.pieces, 'no furniture found in the houses at all').toBeGreaterThan(20);
+  expect(r.floated, 'furniture hovering above the floor').toEqual([]);
+  expect(r.sunk, 'furniture sunk into the floor').toEqual([]);
+});

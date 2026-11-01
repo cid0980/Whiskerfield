@@ -6,6 +6,9 @@ import { GEO } from './world.js';
 
 const TAU = Math.PI * 2;
 const pick = (r, list) => list[Math.floor(r() * list.length)];
+// Furniture is made of more than one tone of the same colour: a cushion is a shade off its sofa, a
+// frame is a shade off its panel. This is what keeps a pile of boxes reading as one object.
+export const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16); const c = v => Math.max(0, Math.min(255, Math.round(v * k))); return '#' + ((1 << 24) + (c((n >> 16) & 255) << 16) + (c((n >> 8) & 255) << 8) + c(n & 255)).toString(16).slice(1); };
 const WOOD = ['#8d7f67', '#6d5a44', '#a78a62', '#8f5f4e'], CLOTH = ['#8ea48c', '#c88f6e', '#b48c9c', '#4f7f96', '#c9524a', '#d9a53a'], BOOKS = ['#d9544f', '#4f7f96', '#6f9a4f', '#e9c04b', '#c7b2d9', '#3f4a46'];
 export const FLOORS = ['#b89a70', '#a7805b', '#cfc8b4', '#9c8a6e', '#c4b08a'];
 
@@ -13,7 +16,7 @@ export function person(c, x, z, heading, role, y = 0, pose = 'stand') { c.jobs.p
 
 // Walls of thickness t around (x,z) size w×d, from y0 to y1, with a doorway on `side`
 // (0 = +z, 1 = +x, 2 = -z, 3 = -x) centred at offset u along that face.
-export function hollow(W, c, x, z, w, d, y0, y1, t, door, wall, tag, opening = null) {
+export function hollow(W, c, x, z, w, d, y0, y1, t, door, wall, tag, opening = null, base = y0) {
   const hgt = y1 - y0, ym = (y0 + y1) / 2, b = c.batch;
   const wallBox = (wx, wz, ww, wd, yy = ym, hh = hgt) => { b.box(wx, yy, wz, ww, hh, wd, wall); W.solid(c, wx, yy, wz, ww, hh, wd, { kind: 'wall', climbable: true, ...tag }); };
   for (let side = 0; side < 4; side++) {
@@ -29,6 +32,13 @@ export function hollow(W, c, x, z, w, d, y0, y1, t, door, wall, tag, opening = n
     for (const [u0, u1] of segs) {
       const um = (u0 + u1) / 2, len = u1 - u0; if (len <= .02) continue;
       wallBox(x + nx * (half - t / 2) + tx * um, z + nz * (half - t / 2) + tz * um, side % 2 ? t : len, side % 2 ? len : t);
+      // A finished wall has a skirting, a dado rail and a cornice. They are drawn per segment, so
+      // they stop at the doorway instead of running across it.
+      const face = half - t;
+      const trim = (depth, hh, yy, col) => b.trim(x + nx * (face - depth / 2) + tx * um, yy, z + nz * (face - depth / 2) + tz * um, side % 2 ? depth : len, hh, side % 2 ? len : depth, col);
+      trim(.07, .19, base + .095, '#f0e8d5');
+      trim(.04, .05, base + 1.02, '#e4dac2');
+      trim(.09, .13, y1 - .065, '#f2ebd9');
     }
     for (const gap of [door, opening]) if (gap && side === gap.side && y0 + gap.height < y1) {
       wallBox(x + nx * (half - t / 2) + tx * gap.u, z + nz * (half - t / 2) + tz * gap.u, side % 2 ? t : gap.width + .1, side % 2 ? gap.width + .1 : t, (y0 + gap.height + y1) / 2, y1 - y0 - gap.height);
@@ -54,8 +64,64 @@ const wallPoint = (room, side, u, inset = 0) => { const cx = (room.minX + room.m
 const lampHang = (b, x, y0, y1, z, shade) => { b.beam([x, y0, z], [x, y1, z], .015, '#4a4f4c'); b.add(GEO.cone, x, y1 - .12, z, .34, .28, .34, shade); b.ball(x, y1 - .2, z, .07, .07, .07, '#f6ecc8'); };
 const picture = (b, x, y, z, side, w, h, frame, paint) => { const a = side * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)); b.box(x - nx * .04, y, z - nz * .04, side % 2 ? .06 : w, h, side % 2 ? w : .06, frame); b.box(x - nx * .08, y, z - nz * .08, side % 2 ? .02 : w - .12, h - .12, side % 2 ? w - .12 : .02, paint); };
 const rug = (b, x, y, z, w, d, color) => { b.box(x, y + .012, z, w, .024, d, color); b.box(x, y + .018, z, w - .3, .015, d - .3, '#f1e8d2'); };
-const chair = (W, c, x, y, z, a, color) => { const b = c.batch; b.box(x, y + .45, z, .42, .05, .42, color, a); b.box(x - Math.sin(a) * .19, y + .72, z - Math.cos(a) * .19, .42, .55, .05, color, a); for (const u of [-.16, .16]) for (const v of [-.16, .16]) b.box(x + u * Math.cos(a) + v * Math.sin(a), y + .22, z - u * Math.sin(a) + v * Math.cos(a), .04, .44, .04, color); W.solid(c, x, y + .25, z, .44, .5, .44, { climbable: false, kind: 'chair' }); };
-const table = (W, c, x, y, z, w, d, top, legs) => { const b = c.batch; b.box(x, y + .74, z, w, .06, d, top); for (const u of [-1, 1]) for (const v of [-1, 1]) b.box(x + u * (w / 2 - .1), y + .36, z + v * (d / 2 - .1), .07, .72, .07, legs); W.solid(c, x, y + .39, z, w, .78, d, { climbable: false, kind: 'table' }); };
+const chair = (W, c, x, y, z, a, color) => {
+  // A chair is a frame with things on it: seat frame, a cushion, tapered legs, and a back of two
+  // uprights and three rails rather than one slab.
+  const b = c.batch, co = Math.cos(a), si = Math.sin(a), dark = shade(color, .72), light = shade(color, 1.28);
+  const px = (u, v) => x + u * co + v * si, pz = (u, v) => z - u * si + v * co;
+  b.trim(x, y + .42, z, .42, .05, .42, color, a); b.trim(x, y + .455, z, .4, .02, .4, dark, a);
+  b.trim(x, y + .48, z, .34, .06, .34, light, a);
+  for (const s of [-1, 1]) b.trim(px(0, s * .16), y + .35, pz(0, s * .16), .38, .09, .03, dark, a);
+  for (const u of [-.16, .16]) for (const v of [-.16, .16]) {
+    b.trim(px(u, v), y + .2, pz(u, v), .05, .4, .05, color, a);
+    b.trim(px(u * .84, v * .84), y + .03, pz(u * .84, v * .84), .035, .06, .035, dark, a);
+  }
+  for (const u of [-.16, .16]) b.trim(px(u, -.18), y + .72, pz(u, -.18), .05, .56, .05, color, a);
+  for (const sy of [.58, .78]) b.trim(px(0, -.18), y + sy, pz(0, -.18), .34, .07, .035, light, a);
+  b.trim(px(0, -.18), y + 1.0, pz(0, -.18), .41, .07, .06, color, a);
+  W.solid(c, x, y + .25, z, .44, .5, .44, { climbable: false, kind: 'chair' });
+};
+const table = (W, c, x, y, z, w, d, top, legs, hh = .78) => {
+  // A table with an apron and a stretcher, not a sheet on four sticks. `hh` is the height of the top:
+  // a nursery table is a low table, not a table sunk into the floorboards.
+  const b = c.batch, dark = shade(top, .82), legH = hh - .1;
+  b.trim(x, y + hh - .03, z, w, .06, d, top); b.trim(x, y + hh - .07, z, w - .1, .03, d - .1, dark);
+  for (const s of [-1, 1]) {
+    b.trim(x + s * (w / 2 - .07), y + hh - .13, z, .04, .11, d - .22, dark);
+    b.trim(x, y + hh - .13, z + s * (d / 2 - .07), w - .22, .11, .04, dark);
+  }
+  for (const u of [-1, 1]) for (const v of [-1, 1]) {
+    b.trim(x + u * (w / 2 - .12), y + .04 + legH / 2, z + v * (d / 2 - .12), .075, legH, .075, legs);
+    b.trim(x + u * (w / 2 - .12), y + .04, z + v * (d / 2 - .12), .1, .06, .1, legs);
+  }
+  if (w > 1.1) for (const v of [-1, 1]) b.trim(x, y + legH * .25, z + v * (d / 2 - .12), Math.max(.2, w - .5), .05, .05, legs);
+  W.solid(c, x, y + hh / 2, z, w, hh, d, { climbable: false, kind: 'table' });
+};
+// A sofa: a plinth, a seat cushion per place, back cushions leaning on the back, arms with a roll
+// on top, and feet. `a` is the way it faces; `w` its length across.
+// A sofa: a plinth on feet, a seat cushion per place, back cushions, arms with a square roll on top.
+// `a` is the way it faces (its back is at local -z), `w` its length across.
+export const sofa = (W, c, x, y, z, a, w, cloth, kind = 'sofa', depth = .92) => {
+  const b = c.batch, co = Math.cos(a), si = Math.sin(a), dark = shade(cloth, .76), trim = shade(cloth, 1.15);
+  const px = (u, v) => x + u * co + v * si, pz = (u, v) => z - u * si + v * co;
+  const seats = Math.max(1, Math.round(w / .78)), cw = (w - .34) / seats;
+  b.trim(x, y + .17, z, w, .24, depth - .1, dark, a);
+  for (const u of [-1, 1]) for (const v of [-1, 1]) b.trim(px(u * (w / 2 - .12), v * (depth / 2 - .14)), y + .06, pz(u * (w / 2 - .12), v * (depth / 2 - .14)), .1, .12, .1, shade(cloth, .6), a);
+  b.trim(x, y + .31, z, w - .26, .1, depth - .26, cloth, a);
+  for (let k = 0; k < seats; k++) {
+    const u = -w / 2 + .17 + (k + .5) * cw;
+    b.trim(px(u, .04), y + .42, pz(u, .04), cw - .05, .15, depth - .36, trim, a);
+    b.trim(px(u, -(depth / 2 - .21)), y + .63, pz(u, -(depth / 2 - .21)), cw - .05, .3, .16, trim, a);
+  }
+  b.trim(px(0, -(depth / 2 - .08)), y + .52, pz(0, -(depth / 2 - .08)), w - .04, .48, .16, cloth, a);
+  for (const s of [-1, 1]) {
+    const u = s * (w / 2 - .09);
+    b.trim(px(u, 0), y + .44, pz(u, 0), .18, .32, depth - .1, cloth, a);
+    b.trim(px(u, 0), y + .62, pz(u, 0), .2, .09, depth - .08, trim, a);
+    b.trim(px(u, 0), y + .66, pz(u, 0), .15, .05, depth - .16, cloth, a);
+  }
+  W.solid(c, x, y + .35, z, Math.abs(co) > .5 ? w : depth, .7, Math.abs(co) > .5 ? depth : w, { climbable: false, kind });
+};
 const shelfUnit = (W, c, x, y, z, side, len, h, wood, r) => { // flat against a wall on `side`, books in rows
   const b = c.batch, a = side * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)), tx = nz, tz = -nx;
   const sx = x - nx * .2, sz = z - nz * .2;
@@ -64,10 +130,21 @@ const shelfUnit = (W, c, x, y, z, side, len, h, wood, r) => { // flat against a 
   for (let k = 0; k < rows; k++) { const sy = y + .28 + k * .45; for (let j = 0; j < len / .26 - 1; j++) { const u = -len / 2 + .2 + j * .26; if (r() < .12) continue; b.box(sx - nx * .02 + tx * u, sy, sz - nz * .02 + tz * u, side % 2 ? .3 : .2, .34 + r() * .06, side % 2 ? .2 : .3, pick(r, BOOKS)); } }
   W.solid(c, sx, y + h / 2, sz, side % 2 ? .4 : len, h, side % 2 ? len : .4, { climbable: true, kind: 'shelf' });
 };
-const bed = (W, c, x, y, z, a, w, len, quilt, wood) => { // a = heading of the pillow end
-  const b = c.batch, co = Math.cos(a), si = Math.sin(a);
-  b.box(x, y + .25, z, w, .36, len, wood, a); b.box(x, y + .5, z, w - .1, .2, len - .1, '#f3ead6', a);
-  b.box(x - si * .2, y + .6, z - co * .2, w - .12, .14, len - .9, quilt, a); b.box(x + si * (len / 2 - .4), y + .66, z + co * (len / 2 - .4), w * .4, .14, .45, '#fbf6e8', a); if (w > 1.4) b.box(x + si * (len / 2 - .4), y + .66, z + co * (len / 2 - .4), .5, .14, .45, '#fbf6e8', a);
+const bed = (W, c, x, y, z, a, w, len, quilt, wood) => { // a = heading of the pillow end (local +z)
+  const b = c.batch, co = Math.cos(a), si = Math.sin(a), dark = shade(wood, .8), cream = '#f6efdd';
+  const px = (u, v) => x + u * co + v * si, pz = (u, v) => z - u * si + v * co;
+  for (const u of [-1, 1]) for (const v of [-1, 1]) b.trim(px(u * (w / 2 - .16), v * (len / 2 - .16)), y + .11, pz(u * (w / 2 - .16), v * (len / 2 - .16)), .1, .22, .1, dark, a);
+  b.trim(x, y + .3, z, w, .22, len, wood, a);                                  // frame
+  b.trim(x, y + .19, z, w - .1, .1, len - .1, dark, a);                         // rail under it
+  b.trim(x, y + .47, z, w - .12, .18, len - .14, cream, a);                      // mattress
+  const dv = -(len / 2) + .3 + (len - .82) / 2;
+  b.trim(px(0, dv), y + .58, pz(0, dv), w - .04, .12, len - .82, quilt, a);       // duvet
+  b.trim(px(0, dv + (len - .82) / 2 + .02), y + .6, pz(0, dv + (len - .82) / 2 + .02), w + .02, .11, .3, shade(quilt, 1.2), a); // turned down
+  b.trim(px(0, -len / 2 + .42), y + .6, pz(0, -len / 2 + .42), w - .1, .1, .3, shade(quilt, .85), a);                            // throw at the foot
+  const pv = len / 2 - .36, pw = w > 1.4 ? (w - .34) / 2 : w - .3;
+  for (let k = 0; k < (w > 1.4 ? 2 : 1); k++) b.trim(px((w > 1.4 ? (k ? 1 : -1) * (pw / 2 + .03) : 0), pv), y + .63, pz((w > 1.4 ? (k ? 1 : -1) * (pw / 2 + .03) : 0), pv), pw, .16, .42, '#fbf6e8', a);
+  b.trim(px(0, len / 2 - .03), y + .84, pz(0, len / 2 - .03), w + .1, .84, .1, wood, a);   // headboard
+  b.trim(px(0, len / 2 - .03), y + 1.24, pz(0, len / 2 - .03), w + .16, .09, .15, dark, a);
   W.solid(c, x, y + .33, z, Math.abs(co) > .5 ? w : len, .66, Math.abs(co) > .5 ? len : w, { climbable: true, kind: 'bed' });
 };
 const plant = (b, x, y, z, s = 1) => { b.add(GEO.pot, x, y + .22 * s, z, .3 * s, .44 * s, .3 * s, '#b07a60'); for (let k = 0; k < 5; k++) { const a = k * 1.3; b.box(x + Math.cos(a) * .12 * s, y + .62 * s + k * .05, z + Math.sin(a) * .12 * s, .12 * s, .5 * s, .04 * s, '#5f7f4a', 0, -a, Math.cos(a) * .5); } };
@@ -83,13 +160,14 @@ export const KITS = {
     // Sofa against the back wall (opposite the door), coffee table, armchair at an angle, TV facing.
     const back = (doorSide + 2) % 4, a = back * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)), tx = nz, tz = -nx;
     const half = back % 2 ? w / 2 : d / 2, sx = cx + nx * (half - .7), sz = cz + nz * (half - .7);
-    b.box(sx, fy + .3, sz, back % 2 ? .95 : 2.5, .6, back % 2 ? 2.5 : .95, cloth); b.box(sx + nx * .33, fy + .75, sz + nz * .33, back % 2 ? .28 : 2.5, .5, back % 2 ? 2.5 : .28, cloth);
-    for (const s of [-1, 1]) b.box(sx + tx * s * 1.15, fy + .5, sz + tz * s * 1.15, back % 2 ? .95 : .2, .4, back % 2 ? .2 : .95, cloth);
-    for (const s of [-.6, .6]) b.box(sx - nx * .1 + tx * s, fy + .7, sz - nz * .1 + tz * s, .5, .22, .32, pick(r, CLOTH), a + .3 * s);
-    W.solid(c, sx, fy + .35, sz, back % 2 ? 1 : 2.5, .7, back % 2 ? 2.5 : 1, { climbable: false, kind: 'sofa' });
+    // Two throw cushions on the sofa, and a cushion on the armchair, each a colour of its own.
+    const throws = [pick(r, CLOTH), pick(r, CLOTH)];
+    sofa(W, c, sx, fy, sz, a + Math.PI, 2.5, cloth);
+    for (let k = 0; k < 2; k++) { const u = (k ? 1 : -1) * .82; b.trim(sx + tx * u - nx * .26, fy + .62, sz + tz * u - nz * .26, .44, .42, .16, throws[k], a); }
     b.box(sx - nx * 1.6, fy + .22, sz - nz * 1.6, 1.1, .44, .6, wood, a); b.box(sx - nx * 1.6, fy + .46, sz - nz * 1.6, 1, .04, .5, '#e3dcc6', a); b.cyl(sx - nx * 1.6 + tx * .2, fy + .54, sz - nz * 1.6 + tz * .2, .1, .1, '#f1e8d2');
     W.solid(c, sx - nx * 1.6, fy + .24, sz - nz * 1.6, back % 2 ? .6 : 1.1, .48, back % 2 ? 1.1 : .6, { climbable: false, kind: 'table' });
-    const ax = sx - nx * 1.2 + tx * 2.1, az = sz - nz * 1.2 + tz * 2.1; b.box(ax, fy + .3, az, .9, .6, .9, pick(r, CLOTH), a - .6); b.box(ax - Math.sin(a - .6) * .35, fy + .75, az - Math.cos(a - .6) * .35, .9, .5, .2, pick(r, CLOTH), a - .6); W.solid(c, ax, fy + .35, az, .95, .7, .95, { climbable: false, kind: 'chair' });
+    const ax = sx - nx * 1.2 + tx * 2.1, az = sz - nz * 1.2 + tz * 2.1, ac = pick(r, CLOTH); sofa(W, c, ax, fy, az, a - .6, .95, ac, 'chair', .95);
+    b.trim(ax - Math.sin(a - .6) * .3, fy + .64, az - Math.cos(a - .6) * .3, .38, .34, .14, pick(r, CLOTH), a - .6);
     const vx = cx - nx * (half - .5), vz = cz - nz * (half - .5); b.box(vx, fy + .25, vz, back % 2 ? .45 : 1.6, .5, back % 2 ? 1.6 : .45, wood); b.box(vx, fy + 1.05, vz, back % 2 ? .06 : 1.5, .9, back % 2 ? 1.5 : .06, '#2f3331'); b.box(vx + nx * .035, fy + 1.05, vz + nz * .035, back % 2 ? .01 : 1.3, .7, back % 2 ? 1.3 : .01, '#a9c3c9');
     W.solid(c, vx, fy + .25, vz, back % 2 ? .45 : 1.6, .5, back % 2 ? 1.6 : .45, { climbable: false, kind: 'cabinet' });
     { const [qx, qz] = wallPoint(room, (back + 1) % 4, -(((back + 1) % 2 ? d : w) / 2) + 1.4); shelfUnit(W, c, qx, fy, qz, (back + 1) % 4, 2, 1.9, wood, r); }
@@ -208,7 +286,7 @@ export const KITS = {
     ladderBox(b, bx - tx * .55, fy, bz - tz * .55, a);
     rug(b, cx - nx * .5, fy, cz - nz * .5, 2, 2, '#e9c04b');
     for (let k = 0; k < 9; k++) { const ang = k * 2.1, rr = .3 + (k % 3) * .3; b.box(cx - nx * .5 + Math.cos(ang) * rr, fy + .11 + (k % 2) * .22, cz - nz * .5 + Math.sin(ang) * rr, .22, .22, .22, pick(r, ['#c9524a', '#4f7f96', '#e9c04b', '#6f9a4f']), ang); } // blocks
-    table(W, c, cx - nx * (half - 1), fy - .25, cz - nz * (half - 1), 1.2, .7, '#f3ead6', '#c9524a'); for (const s of [-.4, .4]) chair(W, c, cx - nx * (half - 1) + tx * s, fy - .15, cz - nz * (half - 1) - nx * .6 + tz * s, a, '#4f7f96');
+    table(W, c, cx - nx * (half - 1), fy, cz - nz * (half - 1), 1.2, .7, '#f3ead6', '#c9524a', .52); for (const s of [-.4, .4]) chair(W, c, cx - nx * (half - 1) + tx * s, fy, cz - nz * (half - 1) - nx * .6 + tz * s, a, '#4f7f96');
     for (let k = 0; k < 4; k++) picture(b, cx - nx * (half - .02) + tx * (-.9 + k * .6), fy + 1.5 + (k % 2) * .25, cz - nz * (half - .02) + tz * (-.9 + k * .6), (back + 2) % 4, .4, .35, '#f3ead6', pick(r, ['#e9c04b', '#8ebbb0', '#d9544f', '#c7b2d9']));
     const hx = cx + nx * (half - .7) - tx * 1.6, hz = cz + nz * (half - .7) - tz * 1.6; // rocking horse
     b.box(hx, fy + .55, hz, .7, .3, .25, '#d9a53a', a + Math.PI / 2); b.box(hx + tx * .4, fy + .75, hz + tz * .4, .25, .3, .2, '#d9a53a', a + Math.PI / 2); for (const s of [-.25, .25]) b.box(hx + tx * s, fy + .25, hz + tz * s, .06, .5, .35, '#8f5f4e', a + Math.PI / 2); b.add(GEO.cylinder, hx, fy + .05, hz, .4, .5, .4, '#8f5f4e', 0, a + Math.PI / 2, Math.PI / 2);
@@ -306,6 +384,7 @@ export function apronShim(W, c, rects, fy) {
   const batch = Object.create(c.batch);
   const real = c.batch;
   batch.box = (x, y, z, w, h, d, ...rest) => hit(x, z, w, d, y - h / 2, y + h / 2) ? undefined : real.box(x, y, z, w, h, d, ...rest);
+  batch.trim = (x, y, z, w, h, d, ...rest) => hit(x, z, w, d, y - h / 2, y + h / 2) ? undefined : real.trim(x, y, z, w, h, d, ...rest);
   batch.add = (geo, x, y, z, sx = 1, sy = 1, sz = 1, ...rest) => hit(x, z, sx, sz, y - sy / 2, y + sy / 2) ? undefined : real.add(geo, x, y, z, sx, sy, sz, ...rest);
   batch.cyl = (x, y, z, r, h, color, ...rest) => hit(x, z, r * 2, r * 2, y - h / 2, y + h / 2) ? undefined : real.cyl(x, y, z, r, h, color, ...rest);
   batch.ball = (x, y, z, rx, ry, rz, ...rest) => hit(x, z, rx * 2, rz * 2, y - ry, y + ry) ? undefined : real.ball(x, y, z, rx, ry, rz, ...rest);

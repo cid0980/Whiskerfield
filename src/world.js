@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeMarket, makeFactory, makeTower, makePlayground, makeInterior, makeWarehouse, makeStation, makeAllotments, makeRailway, makeAirport, railTrack } from './places.js';
 import { makeLake, makeCoast, makeSea, makeBalloonField } from './shore.js';
-import { hollow, doorway, furnishHouse, furnishKit, FLOORS, PLACE_NAMES, KITS } from './rooms.js';
+import { hollow, doorway, furnishHouse, furnishKit, FLOORS, PLACE_NAMES, KITS, shade } from './rooms.js';
 
 export const CHUNK = 72;
 // Pedestrian network: pavements (28.45 / 43.55 mod 72) and the block footpaths (0 mod 72).
@@ -73,6 +73,9 @@ export class Batch {
     this.cap = 2048;
     this.p = new Float32Array(this.cap * 3); this.n = new Float32Array(this.cap * 3); this.c = new Float32Array(this.cap * 3); this.g = new Float32Array(this.cap);
     this.i = []; this.count = 0; this.items = []; this.verts = 0;
+    // Decoration (skirtings, rails, cornices) is drawn but is not an obstacle: the flags travel with
+    // `items`, so the auto-collider pass can skip them.
+    this.deco = [];
   }
   reserve(extra) {
     const need = this.count + extra;
@@ -83,9 +86,10 @@ export class Batch {
     const g = new Float32Array(cap); g.set(this.g.subarray(0, this.count)); this.g = g; this.cap = cap;
   }
   // `glow` (0..1) marks surfaces that shine at night: lamp heads, lit windows, signs.
-  add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0, glow = 0) {
+  add(geometry, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0, glow = 0, deco = false) {
     const pos = geometry.attributes.position, norm = geometry.attributes.normal, n = pos.count;
-    this.items.push(geometry, x, y, z, sx, sy, sz, rx, ry, rz);
+    this.items.push(geometry, x, y, z, sx, sy, sz, rx, ry, rz); this.deco.push(deco);
+    if (!this.items.deco) this.items.deco = this.deco;
     this.reserve(n);
     const col = colourOf(color), cr = col[0], cg = col[1], cb = col[2];
     const p = this.p, nn = this.n, cc = this.c, gg = this.g;
@@ -123,6 +127,8 @@ export class Batch {
     return this;
   }
   box(x, y, z, w, h, d, color, ry = 0, glow = 0) { return this.add(boxGeo, x, y, z, w, h, d, color, 0, ry, 0, glow); }
+  // A decorated surface: drawn like any other box, but it never turns into a collider.
+  trim(x, y, z, w, h, d, color, ry = 0) { return this.add(boxGeo, x, y, z, w, h, d, color, 0, ry, 0, 0, true); }
   cyl(x, y, z, r, h, color, rx = 0, rz = 0) { return this.add(cylinderGeo, x, y, z, r, h, r, color, rx, 0, rz); }
   ball(x, y, z, rx, ry, rz, color, soft = false) { return this.add(soft ? softSphereGeo : sphereGeo, x, y, z, rx, ry, rz, color); }
   beam(a, b, radius, color) {
@@ -309,7 +315,9 @@ export class World {
     const explicit = c.colliders.filter(s => s.shape !== 'roof');
     const step = .27, euler = new THREE.Euler(), q = new THREE.Quaternion(), v = new THREE.Vector3();
     let sinceYield = 0;
+    const deco = items.deco;
     for (let k = 0; k < items.length; k += ITEM_STRIDE) {
+      if (deco && deco[k / ITEM_STRIDE]) continue; // skirting, rails, cornices: drawn, not solid
       if (++sinceYield > 1200) { sinceYield = 0; yield; }
       const g = items[k], x = items[k + 1], y = items[k + 2], z = items[k + 3], sx = items[k + 4], sy = items[k + 5], sz = items[k + 6], rx = items[k + 7], ry = items[k + 8], rz = items[k + 9];
       const sphere = g === sphereGeo || g === softSphereGeo;
@@ -549,6 +557,10 @@ export class World {
     b.box(x, (floorH + h) / 2, z, w, h - floorH, d, wall);
     const floorColor = FLOORS[Math.floor(r() * FLOORS.length)];
     b.box(x, fy - .05, z, w - .1, .1, d - .1, floorColor); this.solid(c, x, fy / 2, z, w, fy, d, { climbable: false, kind: 'floor', buildingId: id });
+    // Floorboards: seams running the length of the room, and a border strip round the edge, so the
+    // floor is a floor and not a painted rectangle.
+    for (let off = -w / 2 + .55, k = 0; off < w / 2 - .35; off += .62, k++) b.box(x + off, fy + .003, z, .045, .012, d - .42, k % 2 ? shade(floorColor, .88) : shade(floorColor, 1.09));
+    for (const s of [-1, 1]) { b.box(x + s * (w / 2 - t - .16), fy + .004, z, .32, .014, d - 2 * t - .1, shade(floorColor, .82)); b.box(x, fy + .004, z + s * (d / 2 - t - .16), w - 2 * t - .1, .014, .32, shade(floorColor, .82)); }
     b.box(x, floorH - .08, z, w - .2, .16, d - .2, '#efe8d6');
     // Some houses grow a wing: a lower L-shaped annexe off one side with its own pitched roof,
     // reached through an opening in the ground-floor wall.
@@ -557,9 +569,8 @@ export class World {
       const sides = [0, 1, 2, 3].filter(sd => { const sa = sd * Math.PI / 2, reach = sd % 2 ? w / 2 + Math.round(Math.sin(sa)) * (x - lotX) : d / 2 + Math.round(Math.cos(sa)) * (z - lotZ); return sd !== doorSide && reach + 4.75 <= 12.1; });
       if (sides.length) { const ws = sides[Math.floor(r() * sides.length)]; wing = { side: ws, u: (r() - .5) * ((ws % 2 ? d : w) - 9), ww: 6.4 + r() * 1.2, wd: 4.4 + r() * .6, h: floorH + .25 }; }
     }
-    const inside = hollow(this, c, x, z, w, d, 0, floorH, t, { side: doorSide, u: doorU, width: doorW, height: doorH }, wall, { buildingId: id, building }, wing ? { side: wing.side, u: wing.u, width: 1.9, height: 2.25 } : null);
+    const inside = hollow(this, c, x, z, w, d, 0, floorH, t, { side: doorSide, u: doorU, width: doorW, height: doorH }, wall, { buildingId: id, building }, wing ? { side: wing.side, u: wing.u, width: 1.9, height: 2.25 } : null, fy);
     if (wing) this.wing(c, building, wing, fy, t, floorColor, r, id);
-    for (const sd of [0, 1, 2, 3]) { const a = sd * Math.PI / 2, nx = Math.round(Math.sin(a)), nz = Math.round(Math.cos(a)); b.box(x + nx * (sd % 2 ? w / 2 - t - .02 : 0), fy + .06, z + nz * (sd % 2 ? 0 : d / 2 - t - .02), sd % 2 ? .05 : w - 2 * t, .12, sd % 2 ? d - 2 * t : .05, '#efe8d6'); } // skirting
     const rooms = furnishHouse(this, c, inside, fy, floorH, r, doorSide, doorU, wall, id, special === 0 ? 'bakery' : null);
     c.landmarks.push({ id: id + ':in', kind: 'house', x, z, radius: 3, name: `${PLACE_NAMES[rooms[0].kit]} and ${PLACE_NAMES[rooms[1].kit]}`, inside, y: fy, kits: rooms.map(k => k.kit) });
     b.box(x, h - .12, z, w + .38, .25, d + .38, '#e8dfc4');
@@ -703,7 +714,7 @@ export class World {
     b.box(cxw, fy - .05, czw, ww - .1, .1, wd - .1, floorColor); this.solid(c, cxw, fy / 2, czw, ww, fy, wd, { climbable: false, kind: 'floor', buildingId: id });
     // Walls: the side facing the house gets the opening (the house wall stands right there).
     const facing = (wing.side + 2) % 4;
-    const room = hollow(this, c, cxw, czw, ww, wd, 0, h, t, { side: facing, u: 0, width: 1.9, height: 2.25 }, wall, { buildingId: id, building: sub });
+    const room = hollow(this, c, cxw, czw, ww, wd, 0, h, t, { side: facing, u: 0, width: 1.9, height: 2.25 }, wall, { buildingId: id, building: sub }, null, fy);
     b.box(cxw, h - .1, czw, ww - .1, .2, wd - .1, '#efe8d6'); this.solid(c, cxw, h - .1, czw, ww, .2, wd, { kind: 'ceiling', climbable: false, buildingId: id });
     b.box(cxw, h - .12, czw, ww + .3, .25, wd + .3, '#e8dfc4');
     c.colliders.push({ shape: 'roof', building: sub, kind: 'roof', climbable: false, minX: cxw - ww / 2 - .55, maxX: cxw + ww / 2 + .55, minY: h, maxY: h + 1.7, minZ: czw - wd / 2 - .55, maxZ: czw + wd / 2 + .55 });

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { taperTube, mergeGeos, ellipsoid, capsule, cone, sphereGeo, tabbyTexture } from './fur.js';
+import { taperTube, mergeGeos, ellipsoid, cone, sphereGeo, tabbyTexture } from './fur.js';
 
 const damp = THREE.MathUtils.damp;
 const clamp = THREE.MathUtils.clamp;

@@ -87,6 +87,16 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.2** – The view stops clipping. Two bugs were left in the camera after 1.8.0: while the
+  over-the-shoulder sidestep eased in and out, the eye travelled between two directions that were each
+  checked but through the wall between them, so walking along the front of a house could put you inside
+  it for half a second; and the rule that lifts the eye over low clutter could lift it into a flowerpot
+  or a market stall's beam, and the rule that keeps it off the ground could do the same. The eye now
+  checks the direction it is actually looking from, and a last pass walks it back towards the cat until
+  it is out of anything solid, whatever the easing did. A new test walks the cat about four corners of
+  the town with the buttons mashed at random and insists that nothing goes wrong: no numbers lost to
+  NaN, no falling out of the world, and never once an eye inside a wall. Also swept out some dead
+  weight — a camera timer nothing had read since 1.8.0, an unused import and an unused helper.
 - **1.8.1** – The cat is a cat, and it moves like one. Its body is now one tapered length along a curved
   spine — deep at the chest, tucked at the waist — with a neck that carries the head clear of the
   shoulders, almond eyes set into the skull, smaller ears, tapered legs with real thighs and paws, and a

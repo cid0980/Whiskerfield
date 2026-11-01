@@ -62,7 +62,6 @@ export function buildHat(id) { return buildItem('hat', id); }
 // Five slots that can all be worn at once. `need` is a shiny count; `kind` means "you must have
 // found at least one of that shiny" (a bell for the bell collar, a coin for the monocle).
 const glassMat = () => new THREE.MeshStandardMaterial({ color: '#9fd3e6', roughness: .15, metalness: .1, transparent: true, opacity: .45 });
-const stripBox = (g, color, x, y, z, sx, sy, sz, rx = 0, rz = 0, ry = 0) => { const m = part(GEO.box, color, x, y, z, sx, sy, sz, rx, rz); m.rotation.y = ry; g.add(m); return m; };
 export const WARDROBE = {
   hat: HATS,
   neck: [

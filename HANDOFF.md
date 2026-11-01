@@ -246,6 +246,19 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **`g.step()` moves the physics and the town; it does not move the camera.** The eye only moves in
+  `updateCamera`, which runs from the render loop (or from `g.settle(n)`). A soak that calls `g.step()`
+  in a loop and samples `g.cameraInfo()` is reading a camera frozen where it was last left — this
+  reported "the eye is inside a wall for six seconds" at every house, which was nothing of the sort.
+  Check anything about the view with `g.step(1/60); g.settle(1);` per frame.
+- **The camera's own easing can put the eye inside geometry even when both ends are clear.** The
+  sidestep offset is eased (`aimDy/aimDp`), and the distance came from the *chosen* direction, so the
+  direction halfway through the ease was never cast. `updateCamera` now also casts along the direction
+  it is actually looking from (`aimDist`, which the desired distance gives way to), and a final
+  `eyeInSolid` pass pulls the drawn eye back towards the cat until it is out of anything solid — the
+  ground-lift and the ceiling clamp can otherwise lift the eye into a flowerpot or a stall beam.
+  `cameraInfo().inside` skips thin cylinders, exactly as `cameraOccluder` does, or every lamp post in
+  the town counts as a wall.
 - **The cat's gait has to be derived from the ground speed.** `Cat.update` used a fixed cadence
   (`speed / strideLen * .9`), which at 7 m/s asked for 1.1 gait cycles a second while the legs were
   swinging 2 m/s worth of ground — the paws skated. It is now `cadence = speed / strideLen` cycles a

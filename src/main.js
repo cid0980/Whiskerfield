@@ -59,16 +59,15 @@ const audio = new NeighborhoodAudio(); audio.enabled = settings.audio; audio.vol
 let world, physics, people, cat, renderer, scene, camera, sun, ground, leafMesh, butterflyMesh, sparkMesh, clouds = [], birds;
 let started = false, resting = false, modal = null, previousFocus = null, ready = false, storageWarning = false;
 let cameraYaw = Number.isFinite(saved?.cameraYaw) ? saved.cameraYaw : .56, cameraPitch = .34, cameraDistance = mobile ? 5 : 5.4;
-let cameraYawTarget = cameraYaw, cameraPitchTarget = cameraPitch, cameraDistanceTarget = cameraDistance, cameraInputTimer = 0;
+let cameraYawTarget = cameraYaw, cameraPitchTarget = cameraPitch, cameraDistanceTarget = cameraDistance;
 // One orbit rig for drag, touch and gamepad. Pitch runs from looking up at the sky to looking down
 // at the cat's paws; drag and stick are scaled by the same sensitivity setting, so the camera feels
 // the same whatever is in your hands.
 const PITCH_MIN = -1.32, PITCH_MAX = 1.4, DIST_MIN = 2.4, DIST_MAX = 14;
 const sensitivity = () => settings.sensitivity / .7;
-function orbit(yaw, pitch, timeout = 1.6) {
+function orbit(yaw, pitch) {
   if (!yaw && !pitch) return;
   cameraYawTarget -= yaw; cameraPitchTarget = clamp(cameraPitchTarget + pitch, PITCH_MIN, PITCH_MAX);
-  cameraInputTimer = timeout;
 }
 const orbitDrag = (dx, dy) => orbit(dx * .0034 * sensitivity(), dy * .0023 * sensitivity());
 const orbitStick = (rx, ry, dt) => orbit(rx * 2.6 * dt * sensitivity(), ry * 1.8 * dt * sensitivity());
@@ -190,7 +189,10 @@ function init() {
       const blocked = physics.segmentHit(eye, head, .06, s => cameraOccluder(s, head.y)).t;
       let inside = null;
       for (const s of physics.query(eye.x, eye.z, .3)) {
+        // Skip exactly what the camera itself is allowed to pass through: thin posts and poles are
+        // ignored by cameraOccluder, so being level with one is not the eye being in a wall.
         if (s.sensor || s.person || s.shape === 'ellipsoid') continue;
+        if (s.shape === 'cylinder' && s.r < .16) continue;
         if (eye.x > s.minX && eye.x < s.maxX && eye.z > s.minZ && eye.z < s.maxZ && eye.y > s.minY && eye.y < s.maxY) { inside = s.kind; break; }
       }
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -199,7 +201,7 @@ function init() {
     // Settle the camera the way the render loop does, without waiting for frames (software WebGL is slow).
     settle: (n = 90, dt = 1 / 60) => { for (let i = 0; i < n; i++) updateCamera(dt); },
     drawMinimap: () => drawMinimap(),
-    setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = clamp(pitch, PITCH_MIN, PITCH_MAX); cameraDistance = cameraDistanceTarget = distance; cameraInputTimer = 1.6; },
+    setCamera: (yaw, pitch = cameraPitch, distance = cameraDistance) => { cameraYaw = cameraYawTarget = yaw; cameraPitch = cameraPitchTarget = clamp(pitch, PITCH_MIN, PITCH_MAX); cameraDistance = cameraDistanceTarget = distance; },
     getSettings: () => ({ ...settings })
   };
 }
@@ -414,11 +416,11 @@ function createUI() {
   });
   canvas.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId) || modal) return; const p = pointers.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, DIST_MIN, mobile ? 9 : DIST_MAX); lastPinch = d; cameraInputTimer = 1.6; }
+    if (pointers.size === 2) { const a = [...pointers.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); cameraDistanceTarget = clamp(cameraDistanceTarget - (d - lastPinch) * .012, DIST_MIN, mobile ? 9 : DIST_MAX); lastPinch = d; }
     else orbitDrag(dx, dy);
   });
   const release = e => pointers.delete(e.pointerId); canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release); canvas.addEventListener('lostpointercapture', release);
-  canvas.addEventListener('wheel', e => { e.preventDefault(); if (!modal) { cameraDistanceTarget = clamp(cameraDistanceTarget + e.deltaY * .006, DIST_MIN, DIST_MAX); cameraInputTimer = 1.6; } }, { passive: false });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); if (!modal) { cameraDistanceTarget = clamp(cameraDistanceTarget + e.deltaY * .006, DIST_MIN, DIST_MAX); } }, { passive: false });
   // Touch joystick, latching sprint, hold-to-climb, and jump.
   const joy = $('joystick'); let joyPointer = null;
   const moveJoy = e => { const rect = joy.getBoundingClientRect(), max = rect.width * .36; let dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2; const d = Math.hypot(dx, dy); if (d > max) { dx *= max / d; dy *= max / d; } const n = Math.min(1, d / max), dead = .1; const shaped = n < dead ? 0 : (n - dead) / (1 - dead); joyX = d ? dx / d * shaped : 0; joyY = d ? dy / d * shaped : 0; $('joystick-knob').style.transform = `translate(${dx}px,${dy}px)`; joy.classList.toggle('engaged', n > dead); };
@@ -610,13 +612,23 @@ function cameraOccluder(s, eyeY) {
   return s.minY > eyeY + .06;
 }
 
+// Is this point inside something solid? Short scenery counts here even though the camera is willing
+// to look over it: being *inside* a flowerpot is never what anyone wants to see.
+function eyeInSolid(x, y, z) {
+  for (const s of physics.query(x, z, .05)) {
+    if (s.sensor || s.person || s.shape === 'ellipsoid' || s.shape === 'roof') continue;
+    if (s.shape === 'cylinder' && s.r < .16) continue;
+    if (x > s.minX && x < s.maxX && z > s.minZ && z < s.maxZ && y > s.minY && y < s.maxY) return true;
+  }
+  return false;
+}
+
 function updateCamera(dt, instant = false) {
   if (hold.camera) { camera.position.set(...hold.camera.pos); camera.lookAt(...hold.camera.at); return; }
   if (flight.active && flight.camPos) { camera.position.copy(flight.cam.pos); camera.lookAt(flight.cam.at); return; }
   cameraYaw = THREE.MathUtils.damp(cameraYaw, cameraYawTarget, 12, dt);
   cameraPitch = THREE.MathUtils.damp(cameraPitch, cameraPitchTarget, 10, dt);
   cameraDistance = THREE.MathUtils.damp(cameraDistance, cameraDistanceTarget, 6, dt);
-  cameraInputTimer = Math.max(0, cameraInputTimer - dt);
   const isWelcome = !started, narrow = innerWidth < 700 || innerWidth < innerHeight;
   const rightX = Math.cos(cameraYaw), rightZ = -Math.sin(cameraYaw);
   // What the camera orbits around: the cat, with a small lead from its own motion.
@@ -691,7 +703,11 @@ function updateCamera(dt, instant = false) {
   if (instant) { aimDy = aimDp = 0; camAlt = null; }
   const aimPitch = clamp(pitch + aimDp, PITCH_MIN, 1.32), aimYaw = cameraYaw + aimDy;
   camDir.set(Math.sin(aimYaw) * Math.cos(aimPitch), Math.sin(aimPitch), Math.cos(aimYaw) * Math.cos(aimPitch));
-  const allowed = shot.t;
+  // While the sidestep eases in and out the eye travels between two directions that were each
+  // checked; halfway between them can still be a wall. One more cast along the direction actually
+  // being looked from, and the distance gives way to whatever room that direction has.
+  const aimHit = physics.segmentHit(cameraTarget, camEye.copy(cameraTarget).addScaledVector(camDir, distance), CAM.radius, s => cameraOccluder(s, cameraTarget.y));
+  const aimDist = distance * (aimHit.t < 1 ? Math.max(0, aimHit.t - .03 / Math.max(1, distance)) : 1);
   if (!isWelcome) {
     // 2. Two things are not walls: pitched roofs and low scenery. Rather than pulling the eye in,
     // lift it just enough that the line of sight clears them — but never indoors, where "seeing over
@@ -710,7 +726,7 @@ function updateCamera(dt, instant = false) {
       if (t < 1 && t > .05) needY = Math.max(needY, cameraTarget.y + (s.maxY + .22 - cameraTarget.y) / t);
     }
   }
-  cameraDesired.copy(camDir).multiplyScalar(Math.max(shot.dist, CAM.min * .6)).add(cameraTarget);
+  cameraDesired.copy(camDir).multiplyScalar(Math.min(Math.max(shot.dist, CAM.min * .6), aimDist)).add(cameraTarget);
   if (needY > cameraDesired.y) cameraDesired.y = Math.min(needY, cameraTarget.y + Math.min(2.4, distance * 1.1));
   // 3. Never let the eye sink into the ground, a pond, a bench top — and when that lift happens
   // while looking up, carry the look-at point up with it, so "look at the sky" really looks up.
@@ -731,6 +747,18 @@ function updateCamera(dt, instant = false) {
     const overEye = physics.headroomAbove(cameraDesired.x, cameraDesired.z, player.pos.y, .25, true);
     cameraDesired.y = Math.min(cameraDesired.y, player.pos.y + Math.min(headroom, overEye) - .75);
   }
+  // 4. And the last word: nothing at all may contain the eye. A lift can raise it into the middle of
+  // a flowerpot, a shortened distance can leave it inside a stall's beam; when that has happened,
+  // bring it back along the line to the cat until it is out in the open air again.
+  if (!isWelcome && eyeInSolid(cameraDesired.x, cameraDesired.y, cameraDesired.z)) {
+    camRay.copy(cameraDesired);
+    for (let k = 1; k <= 6; k++) {
+      const back = Math.min(.96, k * .16);
+      cameraDesired.copy(cameraTarget).lerp(camRay, 1 - back);
+      camLook.copy(cameraTarget).lerp(camLook, 1 - back * .5);
+      if (!eyeInSolid(cameraDesired.x, cameraDesired.y, cameraDesired.z)) break;
+    }
+  }
   // Pulling the eye in has to be quick (a wall just came between it and the cat); letting it back
   // out should be slow, or the view breathes in and out as the cat walks past doorways and corners.
   const desiredDist = cameraDesired.distanceTo(cameraTarget);
@@ -739,6 +767,17 @@ function updateCamera(dt, instant = false) {
   else {
     const rate = riding ? 30 : pullIn ? 26 : camIndoors ? 9 : 6;
     camera.position.lerp(cameraDesired, 1 - Math.exp(-rate * dt));
+    eyeDist = camera.position.distanceTo(cameraTarget);
+  }
+  // 5. And whatever that easing did, the eye that is actually drawn is never inside a solid: if the
+  // path from where it was to where it wants to be passed through a pot or a beam, it steps back
+  // along the line to the cat until it is clear.
+  if (!isWelcome && eyeInSolid(camera.position.x, camera.position.y, camera.position.z)) {
+    camRay.copy(camera.position);
+    for (let k = 1; k <= 6; k++) {
+      camera.position.copy(cameraTarget).lerp(camRay, 1 - Math.min(.96, k * .16));
+      if (!eyeInSolid(camera.position.x, camera.position.y, camera.position.z)) break;
+    }
     eyeDist = camera.position.distanceTo(cameraTarget);
   }
   camera.lookAt(camLook);

@@ -1138,3 +1138,44 @@ test('walking past scenery: no scrambling over knee-high clutter, no bouncing be
     expect(r[lane].y, lane).toBeLessThan(.6);
   }
 });
+
+test('a long wander goes wrong in no way at all: no lost numbers, no falling out of the world, the eye never inside a wall', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, p = g.player, hold = g.hold;
+    let seed = 20251101; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const spots = [{ kind: 'square', x: 0, z: 6 }];
+    for (const l of g.world.landmarks || []) if ((l.kind === 'house' || l.kind === 'market' || l.kind === 'allotments') && spots.length < 4) spots.push(l);
+    const bad = { nan: 0, fell: 0, inside: 0, lowest: 99, frames: 0 };
+    let firstInside = null;
+    for (const s of spots) {
+      g.teleport(s.x + 9, .5, s.z + 9); g.settle(40);
+      hold.x = rnd() * 2 - 1; hold.y = -(0.35 + rnd());
+      for (let i = 0; i < 300; i++) {
+        if (i % 45 === 0) { hold.x = rnd() * 2 - 1; hold.y = rnd() * 2 - 1; hold.jump = rnd() > .85; hold.climb = rnd() > .75; hold.sprint = rnd() > .5; }
+        if (i % 150 === 75) g.setCamera(rnd() * 6.283, rnd() * 1.5 - .5, 2.6 + rnd() * 5);
+        g.step(1 / 60);
+        // The render loop is what moves the eye, so the camera has to be settled too, not just physics.
+        g.settle(1);
+        bad.frames++;
+        const nums = [p.pos.x, p.pos.y, p.pos.z, p.speed, p.heading, g.camera.position.x, g.camera.position.y, g.camera.position.z];
+        if (nums.some(v => !Number.isFinite(v))) bad.nan++;
+        bad.lowest = Math.min(bad.lowest, p.pos.y);
+        if (p.pos.y < -3) bad.fell++;
+        if (i % 3 === 0) {
+          const info = g.cameraInfo();
+          if (info.inside) { bad.inside++; if (!firstInside) firstInside = { at: s.kind, inside: info.inside, where: [g.camera.position.x, g.camera.position.y, g.camera.position.z].map(v => +v.toFixed(1)) }; }
+        }
+      }
+      hold.x = hold.y = 0; hold.jump = hold.climb = hold.sprint = false;
+    }
+    return { ...bad, lowest: +bad.lowest.toFixed(2), firstInside };
+  });
+  expect(errors).toEqual([]);
+  expect(r.nan, 'a number went to NaN').toBe(0);
+  expect(r.fell, 'the cat fell out of the world').toBe(0);
+  expect(r.lowest).toBeGreaterThan(-1);
+  // Thin posts are not walls: cameraInfo has been taught to skip what the camera may pass through.
+  expect(r.inside, JSON.stringify(r.firstInside)).toBe(0);
+});

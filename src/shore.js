@@ -1,10 +1,25 @@
 // Water. A lake fills a whole block now and then, with a jetty and a pair of rowing boats; and
 // to the north the town simply stops at a promenade, a beach and a harbour wall, beyond which
 // there is nothing but sea. Balloon fields are here too: a mown circle where a balloon waits.
-import { CHUNK, GEO } from './world.js';
+import { CHUNK, GEO, SEA_FAR_Z } from './world.js';
 
 const TAU = Math.PI * 2;
 export const WATER = '#7fb3ad', SEA = '#6fa3a6', SAND = '#dccba0', SHALLOWS = '#8fc0b8';
+const SEA_DEEP = '#5d8d95';
+
+// The reef: black rock right across the bay, surf breaking on its seaward face. It is what stops the
+// sea going on for ever — the cat can swim out to it, and no further.
+function reef(W, c, ox, rng) {
+  const b = c.batch, z = SEA_FAR_Z;
+  for (let x = ox - CHUNK / 2 - 3; x <= ox + CHUNK / 2 + 3; x += 2.5) {
+    const jx = x + (rng() - .5) * .8, jz = z + (rng() - .5) * 2.4, h = 1.2 + rng() * 1.6;
+    b.ball(jx, h * .42, jz, 1.5 + rng() * .6, h * .8, 1.25 + rng() * .5, rng() > .5 ? '#3d4347' : '#4b5258');
+    b.ball(jx + (rng() - .5) * .8, h * .12, jz - 1.2, 1.15, .38, .95, '#6d7578');
+    for (let k = 0; k < 3; k++) b.box(jx + (rng() - .5) * 2.2, -.045, jz - 1.5 - rng() * 1.8, 1.5 + rng(), .02, .5 + rng() * .7, '#e2f1ec');
+    for (let k = 0; k < 2; k++) b.box(jx + (rng() - .5) * 2.4, h * .9, jz + (rng() - .5), .7, .5, .7, '#565e62');
+    W.ellipsoidSolid(c, jx, h * .42, jz, 1.6, h * .85, 1.35, { climbable: false, kind: 'rock' });
+  }
+}
 
 function reeds(W, c, x, z, r, n) {
   const b = c.batch;
@@ -25,7 +40,16 @@ function boatSpec(c, id, x, z, heading) { c.vehicles = c.vehicles || []; c.vehic
 export function makeLake(W, c, ox, oz, rng, key) {
   const b = c.batch, R = 24;
   b.box(ox, .02, oz, 58, .1, 58, '#c7b893'); // the shore path, a sandy ring the water sits in
-  b.cyl(ox, .01, oz, R + 1.2, .1, SHALLOWS); b.cyl(ox, .03, oz, R, .1, WATER);
+  // A basin, not a disc laid on the grass: dry sand, then the wet sand at the waterline, then the
+  // shallows, then the water, and two shades deeper in the middle.
+  b.cyl(ox, .012, oz, R + 3.6, .1, '#e2d2a8');
+  b.cyl(ox, .022, oz, R + 2.2, .1, '#d5c69c');
+  b.cyl(ox, .032, oz, R + 1.0, .1, SHALLOWS);
+  b.cyl(ox, .042, oz, R, .1, WATER);
+  b.cyl(ox, .047, oz, R * .72, .02, '#78aba6');
+  b.cyl(ox, .049, oz, R * .4, .02, '#6e9f9f');
+  for (let i = 0; i < 16; i++) { const a = i / 16 * TAU + .2; b.cyl(ox + Math.cos(a) * (R + 1.7), .05, oz + Math.sin(a) * (R + 1.7), .45 + rng() * .5, .035, rng() > .5 ? '#cdbf97' : '#c2b28d'); }
+  for (let i = 0; i < 5; i++) { const a = rng() * TAU; b.ball(ox + Math.cos(a) * (R + 2.4), .1, oz + Math.sin(a) * (R + 2.4), .35 + rng() * .3, .18, .3 + rng() * .2, '#9a958a'); }
   c.water.push({ x: ox, z: oz, r: R });
   for (let i = 0; i < 28; i++) { const a = i / 28 * TAU; reeds(W, c, ox + Math.cos(a) * (R + 1.5), oz + Math.sin(a) * (R + 1.5), rng, 4); }
   for (let i = 0; i < 10; i++) { const a = rng() * TAU, d = R * (.25 + rng() * .65); b.cyl(ox + Math.cos(a) * d, .085, oz + Math.sin(a) * d, .35 + rng() * .2, .025, '#82a67c'); }
@@ -72,8 +96,10 @@ export function makeCoast(W, c, ox, oz, rng, key, shoreZ) {
 // Open water, as far as the chunks go. The railway, where it reaches the sea, carries on over a viaduct.
 export function makeSea(W, c, ox, oz, rng, rail) {
   const b = c.batch;
-  b.box(ox, -.3, oz, CHUNK + .05, .4, CHUNK + .05, SEA);
-  for (let i = 0; i < 6; i++) b.box(ox + (rng() - .5) * 68, -.085, oz + (rng() - .5) * 68, 2 + rng() * 4, .02, .25, '#9cc4bf'); // the odd ripple
+  // Past the reef the water is darker and emptier: a hint that there is nothing out there.
+  b.box(ox, -.3, oz, CHUNK + .05, .4, CHUNK + .05, oz < SEA_FAR_Z - 20 ? SEA_DEEP : SEA);
+  for (let i = 0; i < 6; i++) b.box(ox + (rng() - .5) * 68, -.085, oz + (rng() - .5) * 68, 2 + rng() * 4, .02, .25, oz < SEA_FAR_Z - 20 ? '#7fabad' : '#9cc4bf'); // the odd ripple
+  if (oz - CHUNK / 2 <= SEA_FAR_Z + 3 && oz + CHUNK / 2 >= SEA_FAR_Z - 3) reef(W, c, ox, rng);
   if (rng() < .3) { const rx = ox + (rng() - .5) * 50, rz = oz + (rng() - .5) * 50; b.ball(rx, -.3, rz, 2.4, 1.2, 1.8, '#8a8f87'); b.ball(rx + 1.2, .1, rz + .4, 1, .7, .9, '#9fa39a'); W.ellipsoidSolid(c, rx, -.3, rz, 2.4, 1.2, 1.8, { climbable: true }); }
   if (rail) for (let k = -33; k <= 33; k += 6) { b.box(rail, -.4, oz + k, 3.2, .9, 1.2, '#8a8f87'); }
 }

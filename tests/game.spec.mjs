@@ -988,8 +988,8 @@ test('seated people sit on their seat, and turn to watch the cat go by', async (
     const s = sitters[0];
     if (s) {
       const before = s.heading;
-      const a = Math.random() * 6.28;
-      g.teleport(s.x + Math.sin(a) * 1.4, s.y + .2, s.z + Math.cos(a) * 1.4);
+      // A fixed spot, so the test cannot be unlucky about where it stands.
+      g.teleport(s.x + Math.sin(2.1) * 1.4, s.y + .2, s.z + Math.cos(2.1) * 1.4);
       for (let i = 0; i < 90; i++) g.step(1 / 60);
       out.seatedTurn = { turned: +Math.abs(Math.atan2(Math.sin(s.heading - before), Math.cos(s.heading - before))).toFixed(2), stillSeated: s.sitting };
     }
@@ -1178,4 +1178,36 @@ test('a long wander goes wrong in no way at all: no lost numbers, no falling out
   expect(r.lowest).toBeGreaterThan(-1);
   // Thin posts are not walls: cameraInfo has been taught to skip what the camera may pass through.
   expect(r.inside, JSON.stringify(r.firstInside)).toBe(0);
+});
+
+test('the sea has an edge: a reef across the bay, a current that turns a swimmer back, and the harbour still behind them', async ({ page }) => {
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, p = g.player, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    const far = g.world.seaFarZ;
+    // The reef is a hundred metres out, so the town has to stream in at its real radius for it to exist.
+    g.world.radius = 2; g.world.center = '';
+    g.teleport(0, .4, -250); step(20);
+    g.setCamera(0); g.hold.y = -1;
+    let deepest = 0, tooFar = 0, swam = 0;
+    for (let i = 0; i < 2400; i++) { step(1); deepest = Math.min(deepest, p.pos.z); if (p.tooFar) tooFar++; if (p.swimming) swam++; }
+    g.hold.y = 0;
+    const rocks = g.physics.query(p.pos.x, p.pos.z - 2, 60).filter(s => s.kind === 'rock');
+    const rockSpan = rocks.length ? { x: [Math.min(...rocks.map(s => s.minX)), Math.max(...rocks.map(s => s.maxX))], z: [Math.min(...rocks.map(s => s.minZ)), Math.max(...rocks.map(s => s.maxZ))] } : null;
+    // And back again: the sea behind the cat is still the sea, all the way to the harbour.
+    const back = { water: !!g.world.inWater(0, -300)?.sea, reefChunk: g.world.chunks.has('0,-5') || g.world.chunks.has('0,-6'), far };
+    return { deep: +deepest.toFixed(1), end: +p.pos.z.toFixed(1), tooFar, swam, rocks: rocks.length, rockSpan, back, swimming: !!p.swimming };
+  });
+  expect(errors).toEqual([]);
+  // The reef is a wall of rock the cat cannot swim past, so the sea cannot go on for ever.
+  expect(r.back.water).toBe(true);
+  expect(r.tooFar, 'the current never told the cat it was too far out').toBeGreaterThan(30);
+  expect(r.swam).toBeGreaterThan(600);
+  expect(r.deep).toBeGreaterThanOrEqual(r.back.far);
+  expect(r.end).toBeGreaterThanOrEqual(r.back.far);
+  expect(r.rocks, 'no reef rocks were found where the cat stopped').toBeGreaterThan(10);
+  expect(r.swimming).toBe(true);
+  // The reef runs across the bay, not just where the cat happened to be.
+  expect(r.rockSpan.x[1] - r.rockSpan.x[0]).toBeGreaterThan(60);
+  expect(r.rockSpan.z[1] - r.rockSpan.z[0]).toBeLessThan(10);
 });

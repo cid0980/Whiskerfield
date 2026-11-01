@@ -87,6 +87,13 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.4** – The water is finite now. The sea used to go on for ever: swim north past the harbour and
+  the town would keep making open water for as long as you kept swimming, with nothing out there at
+  all. It is a bay instead. A reef of black rock runs right across it a hundred and twenty metres out,
+  with surf breaking on its seaward face, the water past it drawn darker and emptier, and a current
+  that runs along it and turns a swimmer back ("Too rough out past the reef"). Lakes sit in a proper
+  basin now as well: dry sand, then wet sand at the waterline, the shallows, the water, and two shades
+  of depth out in the middle, with stones round the edge, instead of a flat disc laid on the grass.
 - **1.8.3** – The works floor gets its foreman back. He was seated at his post inside the works office
   box — and that box is one solid block, so he spent every shift buried in it, where no cat could ever
   meet him. He now has a desk and a chair of his own beside the box, facing it, with the schedule

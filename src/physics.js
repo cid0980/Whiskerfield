@@ -448,6 +448,17 @@ export function stepPlayer(p, input, physics, dt, events = {}) {
     }
   }
   p.swimming = afloat;
+  p.tooFar = false;
+  if (afloat && wet.sea) {
+    // The sea ends at the reef. A current runs along the seaward face of it, so a cat that swims out
+    // there is carried back rather than left paddling into an ocean that never ends.
+    const far = physics.world.seaFarZ;
+    if (p.pos.z < far + 9) {
+      p.tooFar = true;
+      p.vz += (far + 9 - p.pos.z) * 1.6 * dt;
+      if (p.pos.z < far + 1.2) { p.pos.z = far + 1.2; if (p.vz < 0) p.vz = 0; }
+    }
+  }
   if (afloat) {
     // Ride the waterline, paddling. `grounded` stays true so the step-up logic can lift the cat out
     // onto the bank — that is the whole point of swimming rather than wading.

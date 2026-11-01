@@ -191,6 +191,10 @@ export const isRailColumn = cx => mod(cx, 6) === 1;
 export const railX = cx => cx * CHUNK - 9;
 // The town ends at the coast to the north: one row of seafront chunks, then open water.
 export const COAST_CZ = -3, SHORE_Z = COAST_CZ * CHUNK - 26, SEA_R = 1e4;
+// The sea is a bay, not an ocean. A reef of black rock runs right across it 120 m out from the
+// harbour, with the surf breaking on its seaward face, and the current that runs along it turns a
+// swimmer back. Past the reef the water is drawn darker and there is nothing out there at all.
+export const SEA_FAR_Z = SHORE_Z - 120;
 export const isSeaChunk = cz => cz < COAST_CZ, isCoastChunk = cz => cz === COAST_CZ;
 export const isAirportChunk = (cx, cz) => mod(cx, 6) === 2 && mod(cz, 6) === 0 && cz > COAST_CZ;
 // The blocks just past either end of a runway: kept clear of anything a plane would fly through.
@@ -203,7 +207,7 @@ export class World {
     this.airports = [];
     this.chunks = new Map(); this.colliders = []; this.buildings = []; this.parks = []; this.water = []; this.jobs = []; this.grounds = []; this.landmarks = []; this.spatial = new Map();
     this.material = makeWorldMaterial();
-    this.center = ''; this.radius = 2; this.pending = [];
+    this.center = ''; this.radius = 2; this.pending = []; this.seaFarZ = SEA_FAR_Z;
   }
 
   update(position, budget = 1) {

@@ -71,7 +71,7 @@ function orbit(yaw, pitch) {
 }
 const orbitDrag = (dx, dy) => orbit(dx * .0034 * sensitivity(), dy * .0023 * sensitivity());
 const orbitStick = (rx, ry, dt) => orbit(rx * 2.6 * dt * sensitivity(), ry * 1.8 * dt * sensitivity());
-let time = 0, lastTime = 0, saveTimer = 0, hudTimer = 0, purrTimer = 0, toastTimer = 0, playTime = 0, slowTime = 0, frameAvg = 16;
+let time = 0, lastTime = 0, saveTimer = 0, hudTimer = 0, purrTimer = 0, toastTimer = 0, playTime = 0, slowTime = 0, frameAvg = 16, tooFarSaid = false;
 let jumpQueued = false, jumpHeld = false, touchClimb = false, touchRun = false, joyX = 0, joyY = 0, wallHint = null, wallPush = 0, scramble = false;
 let gamepadMoveX = 0, gamepadMoveY = 0, gamepadRun = false, gamepadClimb = false, prevPadButtons = [];
 let currentDistrict = '', mapCenter = null, mapDrag = null, portraitOk = sessionStorage.getItem('whiskerfield.portrait') === '1';
@@ -552,6 +552,10 @@ function simulate(dt) {
     if (!player.climbing || amount < .3) scramble = false;
   }
   input.jump = false;
+  // Out past the harbour the current turns you back; say so the first time it happens and then let
+  // the sea itself do the talking.
+  if (player.tooFar) { if (!tooFarSaid) { tooFarSaid = true; toast('Too rough out past the reef. Turn back for the harbour.', 'note', 3800); } }
+  else tooFarSaid = false;
 }
 
 function pollGamepad(dt) {

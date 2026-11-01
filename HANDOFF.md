@@ -246,6 +246,12 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **The sea is bounded by a reef at `SEA_FAR_Z` (`SHORE_Z - 120`), and two things stop a swimmer: the
+  rocks, and a clamp in `stepPlayer` that is the backstop when the reef chunk is not loaded.** Keep
+  both. The clamp is what makes the boundary true — a test that swims north with `world.radius = 1`
+  (as `enter()` sets it) sees no reef at all and is stopped by the clamp alone, so if a test needs to
+  look at the reef it must raise `g.world.radius = 2` and reset `g.world.center = ''` first. Anything
+  the game depends on at a distance greater than the streaming radius has this problem.
 - **A person placed at a coordinate can be inside a solid, and then nobody ever sees them.** The works
   foreman sat at `ox - 1, oz`, which is the inside of the office box — one solid block with a `wall`
   collider — so he was invisible for the whole life of the build. When placing a person (or a seat),

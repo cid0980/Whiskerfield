@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO } from './world.js';
+import { GEO, railAt, railHeading, railOffset } from './world.js';
 import { hollow, doorway, KITS, PLACE_NAMES, apronShim, person as roomPerson } from './rooms.js';
 
 // Landmark lots. Each function fills one 24 x 24 m lot centred on (x, z) in chunk `c`.
@@ -433,7 +433,7 @@ export function makeWarehouse(W, c, x, z, r, id) {
 // ---- railway station ------------------------------------------------------------------------
 
 export function makeStation(W, c, x, z, r, id) {
-  const b = c.batch, tx = x + 7.5; // track centre line, running along z through the lot (drawn by railTrack)
+  const b = c.batch, tx = railAt(x + 7.5, z); // track centre line, running along z through the lot (drawn by railTrack)
   b.box(x - 4, .02, z, 16, .1, 24, '#b3ab97'); paving(c, x - 4, z, 16, 24, .07);
   c.stations = c.stations || []; c.stations.push({ x: tx, z, platformX: x - 2.5 });
   // Platform, a metre up, with three steps at the near end and a yellow safety line.
@@ -532,23 +532,66 @@ export function makeAllotments(W, c, x, z, r, id) {
 // Ballast, sleepers and rails for one chunk's length of track at x, plus boards where the roads
 // and the footpath cross it.
 export function railTrack(W, c, x, oz, rng, station = false, viaduct = false) {
-  const b = c.batch, L = 72;
-  if (viaduct) { b.box(x, .0, oz, 3.8, .3, L + .05, '#9a9a94'); for (let k = -35.6; k <= 35.6; k += .8) b.box(x, .18, oz + k, 2.3, .1, .28, '#6a5540'); for (const s of [-1, 1]) { b.box(x + s * .72, .28, oz, .09, .14, L + .05, '#6b6a66'); b.box(x + s * .72, .36, oz, .13, .03, L + .05, '#9a9a94'); b.box(x + s * 1.95, .5, oz, .1, .7, L + .05, '#8a8f87'); } return; }
-  b.box(x, .06, oz, 3.4, .12, L + .05, '#a39c88');
-  for (let k = -35.6; k <= 35.6; k += .8) b.box(x, .13, oz + k, 2.3, .1, .28, '#6a5540');
-  for (const s of [-1, 1]) { b.box(x + s * .72, .23, oz, .09, .14, L + .05, '#6b6a66'); b.box(x + s * .72, .31, oz, .13, .03, L + .05, '#9a9a94'); }
-  for (const zz of [oz - 32.5, oz + 32.5]) { b.box(x, .2, zz, 3.6, .12, 7.4, '#9f9680'); b.box(x, .27, zz, .9, .02, 7.4, '#b9ae96'); for (const s of [-1, 1]) b.box(x + s * 1.2, .27, zz, .6, .02, 7.4, '#b9ae96'); }
-  b.box(x, .2, oz, 3.6, .12, 3.2, '#9f9680');
+  const b = c.batch, L = 72, STEP = 1.2;
+  // Everything is laid in short segments so it can follow the line's bend: the ballast, the sleepers
+  // and both rails are placed where the curve actually is, not where a straight line would be.
+  const segs = [];
+  for (let z = oz - L / 2; z < oz + L / 2 - .01; z += STEP) {
+    const z1 = Math.min(z + STEP, oz + L / 2), x0 = railAt(x, z), x1 = railAt(x, z1);
+    segs.push({ z: (z + z1) / 2, x: (x0 + x1) / 2, len: Math.hypot(x1 - x0, z1 - z) + .04, h: Math.atan2(x1 - x0, z1 - z) });
+  }
+  const at = z => ({ x: railAt(x, z), h: railHeading(z) });
+  const side = (p, d) => [p.x + Math.cos(p.h) * d, -Math.sin(p.h) * d];
+  if (viaduct) {
+    for (const s of segs) {
+      b.box(s.x, .0, s.z, 3.8, .3, s.len, '#9a9a94', s.h);
+      for (const d of [-.72, .72]) { const [rx, rz] = side(s, d); b.box(rx, .28, s.z + rz, .09, .14, s.len, '#6b6a66', s.h); b.box(rx, .36, s.z + rz, .13, .03, s.len, '#9a9a94', s.h); }
+      for (const d of [-1.95, 1.95]) { const [px, pz] = side(s, d); b.box(px, .5, s.z + pz, .1, .7, s.len, '#8a8f87', s.h); }
+    }
+    for (let k = 0; k < L / .8; k++) { const z = oz - L / 2 + k * .8 + .4, p = at(z); b.box(p.x, .18, z, 2.3, .1, .28, '#6a5540', p.h); }
+    return;
+  }
+  for (const s of segs) b.box(s.x, .06, s.z, 3.4, .12, s.len, '#a39c88', s.h);
+  for (let k = 0; k < L / .8; k++) { const z = oz - L / 2 + k * .8 + .4, p = at(z); b.box(p.x, .13, z, 2.3, .1, .28, '#6a5540', p.h); }
+  for (const s of segs) for (const d of [-.72, .72]) {
+    const [rx, rz] = side(s, d);
+    b.box(rx, .23, s.z + rz, .09, .14, s.len, '#6b6a66', s.h); b.box(rx, .31, s.z + rz, .13, .03, s.len, '#9a9a94', s.h);
+  }
+  // Ramps up to the crossings at each end of the chunk, and the footpath across the middle.
+  for (const zz of [oz - 32.5, oz + 32.5]) {
+    const p = at(zz);
+    b.box(p.x, .2, zz, 3.6, .12, 7.4, '#9f9680', p.h); b.box(p.x, .27, zz, .9, .02, 7.4, '#b9ae96', p.h);
+    for (const s of [-1, 1]) { const [ox2, oz2] = side(p, s * 1.2); b.box(ox2, .27, zz + oz2, .6, .02, 7.4, '#b9ae96', p.h); }
+  }
+  { const p = at(oz); b.box(p.x, .2, oz, 3.6, .12, 3.2, '#9f9680', p.h); }
   // Crossing signs either side of each road.
-  for (const zz of [oz - 32.5, oz + 32.5]) for (const s of [-1, 1]) { const sx = x + s * 2.6, sz = zz + s * 4.4; b.cyl(sx, 1.4, sz, .05, 2.8, '#e9e3d2'); b.box(sx, 2.5, sz, .9, .12, .08, '#c9524a', .78); b.box(sx, 2.5, sz, .9, .12, .08, '#c9524a', -.78); b.box(sx, 1.9, sz, .34, .34, .06, '#2f3331'); b.ball(sx, 1.9, sz + .04, .1, .1, .04, '#d9544f'); W.cylinderSolid(c, sx, 0, sz, .06, 2.8, { kind: 'pole', walkable: false }); }
-  // Fences along the line where there is no platform, broken for the crossings.
-  for (const s of [-1, 1]) for (const seg of [[-29, -4.5], [4.5, 29]]) { if (s < 0 && station) continue; const zz = (seg[0] + seg[1]) / 2 + oz, len = seg[1] - seg[0]; for (let k = seg[0]; k <= seg[1]; k += 2.4) b.box(x + s * 2.9, .55, oz + k, .08, 1.1, .08, '#8d8470'); b.box(x + s * 2.9, .95, zz, .04, .06, len, '#8d8470'); b.box(x + s * 2.9, .5, zz, .04, .06, len, '#8d8470'); W.solid(c, x + s * 2.9, .55, zz, .1, 1.1, len, { kind: 'rail', climbable: false }); }
-  for (let k = 0; k < 10; k++) b.box(x + (rng() - .5) * 3, .13, oz + (rng() - .5) * 60, .3, .04, .5, '#8ea563');
+  for (const zz of [oz - 32.5, oz + 32.5]) for (const s of [-1, 1]) {
+    const p = at(zz + s * 4.4), [sx, szOff] = side(p, s * 2.6), sz = zz + s * 4.4 + szOff;
+    b.cyl(sx, 1.4, sz, .05, 2.8, '#e9e3d2'); b.box(sx, 2.5, sz, .9, .12, .08, '#c9524a', .78); b.box(sx, 2.5, sz, .9, .12, .08, '#c9524a', -.78); b.box(sx, 1.9, sz, .34, .34, .06, '#2f3132'); b.ball(sx, 1.9, sz + .04, .1, .1, .04, '#d9544f');
+    W.cylinderSolid(c, sx, 0, sz, .06, 2.8, { kind: 'pole', walkable: false });
+  }
+  // Fences along the line where there is no platform, broken for the crossings, following the bend.
+  for (const s of [-1, 1]) for (const seg of [[-29, -4.5], [4.5, 29]]) {
+    if (s < 0 && station) continue;
+    let prev = null;
+    for (let k = seg[0]; k <= seg[1] + .01; k += 2.4) {
+      const z = oz + k, p = at(z), [px, pz] = side(p, s * 2.9), post = [px, z + pz];
+      b.box(post[0], .55, post[1], .08, 1.1, .08, '#8d8470');
+      if (prev) {
+        const mx = (prev[0] + post[0]) / 2, mz = (prev[1] + post[1]) / 2, len = Math.hypot(post[0] - prev[0], post[1] - prev[1]), hh = Math.atan2(post[0] - prev[0], post[1] - prev[1]);
+        b.box(mx, .95, mz, .04, .06, len, '#8d8470', hh); b.box(mx, .5, mz, .04, .06, len, '#8d8470', hh);
+        W.solid(c, mx, .55, mz, .5, 1.1, len, { kind: 'rail', climbable: false });
+      }
+      prev = post;
+    }
+  }
+  for (let k = 0; k < 10; k++) { const z = oz + (rng() - .5) * 60, p = at(z); b.box(p.x + (rng() - .5) * 3, .13, z, .3, .04, .5, '#8ea563', p.h); }
 }
+
 
 // The lot beside the line that is not a station: a footbridge, goods sidings, or a signal box.
 export function makeRailway(W, c, x, z, r, id, variant) {
-  const b = c.batch, tx = x + 7.5;
+  const b = c.batch, tx = railAt(x + 7.5, z);
   b.box(x - 4, .02, z, 16, .1, 24, '#aeb08f'); paving(c, x - 4, z, 16, 24, .07);
   if (variant === 'bridge') {
     // Lattice footbridge over the line: stairs each side, deck at 5 m, railings. The best view in the district.

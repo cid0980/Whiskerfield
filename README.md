@@ -87,6 +87,15 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.5** – The railway has bends. Every line used to be a ruler: straight as a die from one edge of
+  the world to the other, with the train running up and down it like a lift. Now the track eases out to
+  one side between one station and the next and back again — a long swing a train leans into, then the
+  other way at the next gap — and comes back to the straight exactly at each station, so the platform,
+  the crossings, the footbridges and the signal boxes all still line up (the gap at the platform is
+  nothing at all). The ballast, every sleeper and both rails are laid along the bend, and the train is
+  three vehicles that each sit on their own bit of the line and turn to face along it, so a consist
+  round a corner is a train and not three boxes cutting the corner. A cat aboard rides the bend too:
+  the sideways shift is part of the ride.
 - **1.8.4** – The water is finite now. The sea used to go on for ever: swim north past the harbour and
   the town would keep making open water for as long as you kept swimming, with nothing out there at
   all. It is a bay instead. A reef of black rock runs right across it a hundred and twenty metres out,

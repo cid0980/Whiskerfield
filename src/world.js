@@ -189,6 +189,19 @@ const mod = (a, n) => ((a % n) + n) % n;
 // Railway lines run north–south every six chunks; airports sit two chunks east of them, every six chunks north–south.
 export const isRailColumn = cx => mod(cx, 6) === 1;
 export const railX = cx => cx * CHUNK - 9;
+// A railway line is not a ruler. Between one station and the next the track eases out to one side and
+// back again — a long bend a train leans into, then the other way — and it comes back to the straight
+// exactly at every station, so platforms, crossings and the train all still line up. Everything that
+// has to know where the rails are (the track, the platform, the footbridges, the train) reads it from
+// here, so nothing can disagree.
+export const STATION_Z0 = -16.5, STATION_GAP = 144, RAIL_SWING = 9;
+export function railOffset(z) {
+  const s = (z - STATION_Z0) / STATION_GAP, i = Math.floor(s), f = s - i, b = Math.sin(f * Math.PI);
+  return (mod(i, 2) ? 1 : -1) * RAIL_SWING * b * b * b;
+}
+export const railAt = (x, z) => x + railOffset(z);
+// Where the rails are pointing: a small angle either side of straight north.
+export const railHeading = z => Math.atan2(railOffset(z + .5) - railOffset(z - .5), 1);
 // The town ends at the coast to the north: one row of seafront chunks, then open water.
 export const COAST_CZ = -3, SHORE_Z = COAST_CZ * CHUNK - 26, SEA_R = 1e4;
 // The sea is a bay, not an ocean. A reef of black rock runs right across it 120 m out from the

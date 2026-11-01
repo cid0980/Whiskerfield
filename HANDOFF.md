@@ -246,6 +246,18 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **Where the rails are is one function: `railOffset(z)` / `railAt(x, z)` in `world.js`.** It is a
+  pure function of z, zero at every station (`STATION_Z0 = -16.5`, `STATION_GAP = 144`, i.e.
+  `cz * 72 - 16.5` for even cz) and swinging `RAIL_SWING` (9 m) either side in between, cubed so the
+  platform ends stay straight. The track generator, the station, the footbridges/signal boxes and the
+  train all read it, so they cannot disagree — if you add anything that has to sit on the line, use
+  `railAt`, never `railX` alone. The sleepers and rails are laid as 1.2 m segments turned to
+  `railHeading(z)`; a long box drawn along z would cut every bend.
+- **The train is three vehicles, and its solids are turned boxes.** `splitVehicles` cuts the batched
+  geometry at z boundaries and re-centres each vehicle on its own origin, so each mesh can be placed
+  at `railAt(baseX, z + origin)` and turned to `railHeading`. Its colliders are axis-aligned, so each
+  one gets the enclosing box of the turned footprint. `train.update()` returns `{ dz, dx }` now — a
+  rider has to be moved by both, or a bend sweeps them off the train.
 - **The sea is bounded by a reef at `SEA_FAR_Z` (`SHORE_Z - 120`), and two things stop a swimmer: the
   rocks, and a clamp in `stepPlayer` that is the backstop when the reef chunk is not loaded.** Keep
   both. The clamp is what makes the boundary true — a test that swims north with `world.radius = 1`

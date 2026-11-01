@@ -1211,3 +1211,56 @@ test('the sea has an edge: a reef across the bay, a current that turns a swimmer
   expect(r.rockSpan.x[1] - r.rockSpan.x[0]).toBeGreaterThan(60);
   expect(r.rockSpan.z[1] - r.rockSpan.z[0]).toBeLessThan(10);
 });
+
+test('the line bends, the train turns with it, and a cat aboard goes round the bend too', async ({ page }) => {
+  test.setTimeout(240000);
+  const errors = await enter(page);
+  const r = await page.evaluate(() => {
+    const g = window.__whiskerfield, t = g.train, p = g.player, step = n => { for (let i = 0; i < n; i++) g.step(1 / 60); };
+    // Watch the whole line for a few stations' worth of running.
+    let minX = 1e9, maxX = -1e9, maxTilt = 0, ran = 0, atStation = null;
+    for (let i = 0; i < 60 * 200; i++) {
+      step(1);
+      if (!t.visible) continue;
+      minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+      for (const v of t.vehicles) maxTilt = Math.max(maxTilt, Math.abs(v.mesh.rotation.y));
+      if (t.state === 'run') ran++;
+      if (!atStation && t.state === 'stop') {
+        const st = (g.world.landmarks || []).filter(l => l.kind === 'station').sort((a, b) => Math.abs(a.z - t.z) - Math.abs(b.z - t.z))[0];
+        if (st) atStation = { gap: +Math.abs(t.x - st.track).toFixed(3), tilt: +Math.abs(t.vehicles[0].mesh.rotation.y).toFixed(3) };
+      }
+    }
+    // Ride it: wait for it to be standing at a station, put the cat on the second carriage's floor,
+    // and let it run through a bend.
+    let support = null, worstDrift = 0, ridden = 0;
+    for (let attempt = 0; attempt < 60 && support === null; attempt++) {
+      if (t.visible && t.state === 'stop') {
+        g.teleport(t.x, 1.6, t.z + 3.2); step(40);
+        const s = g.getState().support; if (s === 'car' || s === 'train') support = s;
+      } else step(30);
+    }
+    if (support) {
+      for (let i = 0; i < 60 * 70; i++) {
+        step(1);
+        if (g.getState().support !== 'car' && g.getState().support !== 'train') break;
+        ridden++;
+        worstDrift = Math.max(worstDrift, Math.abs(p.pos.x - t.x));
+      }
+    }
+    return { swing: +(maxX - minX).toFixed(1), maxTilt: +maxTilt.toFixed(2), ran, atStation, support, ridden, worstDrift: +worstDrift.toFixed(2), vehicles: t.vehicles.length, vehiclesParented: t.vehicles.every(v => v.mesh.parent === t.group) };
+  });
+  expect(errors).toEqual([]);
+  // It used to run dead straight for ever: the whole line was a ruler.
+  expect(r.swing, 'the train never left the straight line').toBeGreaterThan(8);
+  expect(r.maxTilt, 'no vehicle ever turned').toBeGreaterThan(.1);
+  expect(r.vehicles).toBe(3);
+  expect(r.vehiclesParented).toBe(true);
+  expect(r.ran).toBeGreaterThan(600);
+  // At a station the line comes back to the straight, so the platform still lines up.
+  expect(r.atStation.gap).toBeLessThan(.15);
+  expect(r.atStation.tilt).toBeLessThan(.06);
+  // And the cat rides the bend instead of being left behind by it.
+  expect(r.support).toBeTruthy();
+  expect(r.ridden).toBeGreaterThan(600);
+  expect(r.worstDrift).toBeLessThan(4);
+});

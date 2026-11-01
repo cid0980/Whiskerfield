@@ -77,16 +77,17 @@ export function tabbyTexture() {
   const c = document.createElement('canvas'); c.width = 256; c.height = 256;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#c8874a'; ctx.fillRect(0, 0, 256, 256);
-  // Pale belly: a soft vertical band centred at u = .75 (x = 192) plus a paler chest at the front.
-  // The belly sits at u = .75, i.e. x = 192: pale under the chin, cream along the belly, and it must
-  // not wrap round onto the back (u = 0 / 1 is the spine).
-  const belly = ctx.createLinearGradient(168, 0, 256, 0);
-  belly.addColorStop(0, 'rgba(236,222,197,0)'); belly.addColorStop(.45, 'rgba(236,222,197,.8)');
-  belly.addColorStop(.75, 'rgba(236,222,197,.9)'); belly.addColorStop(1, 'rgba(236,222,197,.85)');
-  ctx.fillStyle = belly; ctx.fillRect(168, 0, 88, 256);
-  const chest = ctx.createLinearGradient(0, 200, 0, 256);
-  chest.addColorStop(0, 'rgba(240,232,214,0)'); chest.addColorStop(1, 'rgba(240,232,214,.75)');
-  ctx.fillStyle = chest; ctx.fillRect(100, 196, 156, 60);
+  // The mapping decides where pale fur lands: u runs round the body with the spine at u = 0 / 1 and
+  // the belly at u = .5, and v runs from the chest (v = 0) to the rump (v = 1). A wide band here is
+  // what made the cat look bandaged across the chest, so the belly is narrow and the bib is small.
+  const belly = ctx.createLinearGradient(92, 0, 164, 0);
+  belly.addColorStop(0, 'rgba(233,215,186,0)'); belly.addColorStop(.3, 'rgba(233,215,186,.45)');
+  belly.addColorStop(.5, 'rgba(233,215,186,.55)'); belly.addColorStop(.7, 'rgba(233,215,186,.45)');
+  belly.addColorStop(1, 'rgba(233,215,186,0)');
+  ctx.fillStyle = belly; ctx.fillRect(92, 0, 72, 256);
+  const chest = ctx.createLinearGradient(0, 0, 0, 40);
+  chest.addColorStop(0, 'rgba(242,234,216,.5)'); chest.addColorStop(1, 'rgba(242,234,216,0)');
+  ctx.fillStyle = chest; ctx.fillRect(106, 0, 44, 40);
   // Tabby bands: mackerel streaks across the back, uneven, and fading out before the belly.
   for (let i = 0; i < 11; i++) {
     const y = 6 + i * 22 + Math.random() * 6, h = 5 + Math.random() * 7;

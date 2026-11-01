@@ -46,6 +46,12 @@ export class Cat {
     const bodyGeo = taperTube(spineCurve, radiusAt, { segs: 34, radial: 16 });
     bodyGeo.scale(.85, 1, 1);                      // a cat is taller than it is wide
     this.body = add(this.spine, bodyGeo, 'fur');
+    // The tube has no end caps, so the chest and the rump are closed with a mass each: without them
+    // there is a hole through the cat. They also give the chest and the hindquarters their shape.
+    // Plugs, not balloons: they sit inside the open ends of the tube, so all you see of them is the
+    // inside of the body filled in, and the coat carries on round the outside.
+    add(this.spine, at(ellipsoid(.146, .172, .085, 16, 12), 0, .735, .395), 'fur');
+    add(this.spine, at(ellipsoid(.14, .17, .09, 16, 12), 0, .725, -.448), 'fur');
     // Shoulders and haunches: driven by the gait, but tucked inside the body's own silhouette.
     this.chest = new THREE.Group(); this.chest.position.set(0, .73, .30); this.spine.add(this.chest);
     this.hind = new THREE.Group(); this.hind.position.set(0, .72, -.38); this.spine.add(this.hind);
@@ -128,14 +134,16 @@ export class Cat {
     }
 
     // ---- tail ----------------------------------------------------------------------------------
-    this.tail = new THREE.Group(); this.tail.position.set(0, .74, -.45); this.spine.add(this.tail);
+    // A tail comes out of the rump going back before it rises, thick at the root and thinning to a
+    // rounded tip. Seven short segments rather than six straight ones, so it can carry a curve.
+    this.tail = new THREE.Group(); this.tail.position.set(0, .715, -.47); this.spine.add(this.tail);
     this.tailSegments = [];
     let parent = this.tail;
-    for (let i = 0; i < 6; i++) {
-      const seg = new THREE.Group(); seg.position.set(0, i === 0 ? 0 : .115, 0); parent.add(seg);
-      const r0 = .066 - i * .0072, r1 = .066 - (i + 1) * .0072;
-      add(seg, taperTube(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, .06, 0), new THREE.Vector3(0, .118, 0)]),
-        v => r0 + (r1 - r0) * v, { segs: 6, radial: 10 }), i === 5 ? 'light' : 'face');
+    for (let i = 0; i < 7; i++) {
+      const seg = new THREE.Group(); seg.position.set(0, i === 0 ? -.02 : .10, 0); parent.add(seg);
+      const r0 = .07 - i * .0082, r1 = .07 - (i + 1) * .0082;
+      add(seg, taperTube(new THREE.CatmullRomCurve3([new THREE.Vector3(0, -.02, 0), new THREE.Vector3(0, .05, 0), new THREE.Vector3(0, .105, 0)]),
+        v => r0 + (r1 - r0) * v, { segs: 6, radial: 12 }), i === 6 ? 'light' : 'face');
       this.tailSegments.push(seg); parent = seg;
     }
     // Wardrobe mounts: everything the cat can wear hangs off one of these.
@@ -282,7 +290,7 @@ export class Cat {
     for (let i = 0; i < this.tailSegments.length; i++) {
       const seg = this.tailSegments[i], lag = i * .45;
       seg.rotation.z = Math.sin(time * (resting ? 1.1 : 2.2) - lag) * (resting ? .08 : .12) + this.tailSway * (i / 6) + flick * (i / 6) + sit * (i === 0 ? .9 : .25);
-      seg.rotation.x = (i === 0 ? -.62 : .17) + Math.sin(time * 1.3 - lag) * .05 + this.restBlend * (i === 0 ? -1.13 : -.2) // lying down, the tail lies out along the floor + (climbing ? .18 : 0) + lean * .08 * i
+      seg.rotation.x = (i === 0 ? -1.05 : .17) + (i > 3 ? (i - 3) * .13 : 0) + Math.sin(time * 1.3 - lag) * .05 + this.restBlend * (i === 0 ? -1.13 : -.2) // lying down, the tail lies out along the floor + (climbing ? .18 : 0) + lean * .08 * i
         + wGallop * stride * (i === 0 ? -.55 : -.05) + this.airBlend * (i === 0 ? -.5 : .02) - sit * (i === 0 ? 1.2 : -.02) + st * (i === 0 ? .4 : .05);
       seg.rotation.y = this.restBlend * (i === 0 ? .3 : .45) + sit * (i === 0 ? .4 : .3);
     }

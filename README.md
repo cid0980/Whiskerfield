@@ -87,6 +87,16 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.8** – The cat itself, close up. Three real faults, found by standing the model on a plain
+  backdrop and walking round it: the body was a tube with no end caps, so **you could see straight
+  through the cat** at the chest and the rump (the pale crescent that looked like a floating ring);
+  the **tail was a striped pole** — dead straight, bolt upright — where a tail should leave the rump
+  going back, thick at the root, and curl; and the pale belly patch was mapped to the wrong side of
+  the body, so instead of an underside the cat wore a **cream bandage across its shoulders** (the
+  coat's u runs round the body with the spine at 0 and the belly at .5, and v runs chest to rump, and
+  the marking had both the wrong way round). The body is closed at both ends now, the tail is seven
+  short segments carrying a curve with a taper, and the pale fur is a narrow belly with a small bib
+  at the throat. Still a stylised cat, but no longer a cat with a hole in it.
 - **1.8.7** – Furniture that looks like furniture, and rooms that look lived in. Chairs were a slab
   with a board behind it; they now have a seat frame with a cushion on it, tapered legs, and a back of
   two uprights and three rails. Tables got an apron, a stretcher and feet. Sofas got a plinth, a seat

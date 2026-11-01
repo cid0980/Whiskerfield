@@ -246,6 +246,18 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **The cat model needs to be looked at on a plain backdrop, not in the street.** Build a throwaway
+  studio page (`studio.html` + a tiny `scripts/studio-entry.js` bundled with esbuild) that imports
+  `Cat` from `src/cat.js`, puts it on a disc with three lights and renders four fixed views
+  (side / front / three-quarter / back), and screenshot that. In the world, perspective, the UI and
+  the shadow hide exactly the faults that matter. That harness is how the hole through the body, the
+  pole tail and the mis-mapped chest patch were found — and it costs one esbuild run per iteration.
+- **`taperTube` (in `fur.js`) is an open cylinder: it has no end caps.** Any body built from it needs
+  its ends plugged, or you can see inside the cat. The plugs want to sit just inside the opening, not
+  proud of it, or they read as plates bolted to the chest.
+- **The coat's UVs are: u round the body (spine at 0/1, belly at .5), v nose to tail (chest at 0,
+  rump at 1).** Both the belly band and the bib in `tabbyTexture` were painted the wrong way round
+  for years, which is why the cat looked bandaged instead of pale underneath.
 - **Decoration is drawn, not solid: `batch.trim(...)` marks a primitive as `deco`.** The flags ride
   along on `batch.items` (`items.deco`) and `autoColliderSteps` skips them, so a chair can have
   slatted legs and a cushion without turning into thirteen colliders. Use `trim` for anything a

@@ -87,6 +87,10 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.3** – The works floor gets its foreman back. He was seated at his post inside the works office
+  box — and that box is one solid block, so he spent every shift buried in it, where no cat could ever
+  meet him. He now has a desk and a chair of his own beside the box, facing it, with the schedule
+  pinned where he can see it.
 - **1.8.2** – The view stops clipping. Two bugs were left in the camera after 1.8.0: while the
   over-the-shoulder sidestep eased in and out, the eye travelled between two directions that were each
   checked but through the wall between them, so walking along the front of a house could put you inside

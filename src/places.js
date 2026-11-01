@@ -753,7 +753,14 @@ function worksFloor(W, c, x, z, inside, fy, r, id) {
   c.extras.push({ kind: 'rollers', x: x - 1, y: fy + .88, z: z + 3.6, count: 8, spacing: .65 }); b.box(x - 1, fy + .75, z + 3.6, 5.6, .12, 1, '#4a4f4c'); for (const s of [-2.3, 0, 2.3]) for (const e of [-1, 1]) b.box(x - 1 + s, fy + .35, z + 3.6 + e * .4, .12, .7, .12, '#4a4f4c'); W.solid(c, x - 1, fy + .75, z + 3.6, 5.6, .14, 1, { climbable: false, kind: 'belt' });
   for (let k = 0; k < 3; k++) { b.beam([x - 5 + k * 5, 6.2, z], [x - 5 + k * 5, fy + 4.2, z], .02, '#4a4f4c'); b.add(GEO.cone, x - 5 + k * 5, fy + 4.1, z, .7, .5, .7, '#5f6b66'); b.ball(x - 5 + k * 5, fy + 3.95, z, .12, .12, .12, '#f6ecc8'); }
   b.box(inside.minX + .12, fy + 1.6, z + 3, .04, .7, 2.2, '#c9524a'); b.box(inside.minX + .16, fy + 1.6, z + 3, .02, .4, 1.8, '#f3ead6'); // SAFETY FIRST, more or less
-  roomPerson(c, inside.minX + 3, inside.minZ + 2.6, Math.PI, 'worker', fy); roomPerson(c, px, pz + 1.6, Math.PI, 'worker', fy); roomPerson(c, ox - 1, oz, -Math.PI / 2, 'foreman', fy, 'sit'); roomPerson(c, bx, bz - .9, 0, 'uncle', fy);
+  // The foreman's desk sits out beside the office box, and he sits at it facing the box. He used to
+  // be seated at ox - 1, which is *inside* the office box: a solid block, so he was never seen at all.
+  const dx2 = ox - 3.4, dz2 = oz;
+  b.box(dx2 - .95, fy + .38, dz2, 1.1, .76, .8, '#6d5a44'); b.box(dx2 - .95, fy + .78, dz2, 1.2, .06, .9, '#a78a62'); b.box(dx2 - 1.2, fy + .86, dz2 - .2, .3, .1, .22, '#f3ead6');
+  W.solid(c, dx2 - .95, fy + .4, dz2, 1.2, .8, .9, { climbable: false, kind: 'desk' });
+  b.box(dx2 + .42, fy + .22, dz2, .52, .44, .52, '#4a4f4c');
+  W.solid(c, dx2 + .42, fy + .22, dz2, .52, .44, .52, { climbable: false, kind: 'chair' });
+  roomPerson(c, inside.minX + 3, inside.minZ + 2.6, Math.PI, 'worker', fy); roomPerson(c, px, pz + 1.6, Math.PI, 'worker', fy); roomPerson(c, dx2 + .42, dz2, Math.PI / 2, 'foreman', fy, 'sit'); roomPerson(c, bx, bz - .9, 0, 'uncle', fy);
   c.landmarks.push({ id: id + ':in', kind: 'worksfloor', x, z, radius: 4, name: 'the works floor', inside, y: fy });
 }
 

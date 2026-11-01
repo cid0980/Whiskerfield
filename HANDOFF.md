@@ -246,6 +246,14 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **A person placed at a coordinate can be inside a solid, and then nobody ever sees them.** The works
+  foreman sat at `ox - 1, oz`, which is the inside of the office box — one solid block with a `wall`
+  collider — so he was invisible for the whole life of the build. When placing a person (or a seat),
+  check the spot against the solids already placed there; the quick probe is to iterate
+  `g.people.list`, query `g.physics.query(q.x, q.z, .1)` and look for a non-seat box that contains
+  them. Note the trap: people only exist near the player *and* only once the interior has been built,
+  so teleporting to a far landmark and reading `g.people.list` shows nobody — approach it in real
+  steps, or probe the coordinates you know the room occupies.
 - **`g.step()` moves the physics and the town; it does not move the camera.** The eye only moves in
   `updateCamera`, which runs from the render loop (or from `g.settle(n)`). A soak that calls `g.step()`
   in a loop and samples `g.cameraInfo()` is reading a camera frozen where it was last left — this

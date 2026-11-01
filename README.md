@@ -87,6 +87,12 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.6** – The structure pass begins with roofs and shopfronts, the two things that were worst.
+  Every pitched roof now has boarded eaves: a fascia lip along both edges with a half-round gutter
+  hung under it, so a roof reads as built rather than as the edge of a sheet. And the café's awning —
+  a flat red slab hanging over the pavement at a fixed height, which is what those odd red rectangles
+  on the skyline were — is now what an awning is: a striped canvas sloping out over the terrace, a
+  scalloped valance along its edge, a rail along the wall and two iron brackets holding it up.
 - **1.8.5** – The railway has bends. Every line used to be a ruler: straight as a die from one edge of
   the world to the other, with the train running up and down it like a lift. Now the track eases out to
   one side between one station and the next and back again — a long swing a train leans into, then the

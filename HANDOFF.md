@@ -246,6 +246,17 @@ a screenshot grid), fix, test, push. Suggested pairing in brackets.
 
 ## 8. Pitfalls / gotchas (learned the hard way)
 
+- **The structure pass is in progress, one piece at a time, each pushed on its own.** Done so far:
+  the sea is a bounded bay (1.8.4), the railway bends and the train turns (1.8.5), roof eaves with
+  fascia and gutters, and the café awning rebuilt (1.8.6). Still to do, roughly in the order the owner
+  will notice them: furniture shapes (chairs, tables, shelves, beds — most are still raw boxes),
+  building facades and variety (the corner stones and window boxes are there, the massing is not),
+  market stalls and the works floor, then interiors' clutter. Work from a screenshot of the thing
+  itself, not from the description of it — several "bad structure" reports turn out to be one
+  misplaced box, as the café slab and the buried foreman both were.
+- **`places.js` has `GEO.*` geometry, not the `boxGeo`/`cylinderGeo` names `world.js` uses.** Using
+  `b.add(boxGeo, ...)` there throws on the first chunk that needs it, which means the game never gets
+  past `ready` and every probe times out — that is what a build that "hangs at the loading screen" is.
 - **Where the rails are is one function: `railOffset(z)` / `railAt(x, z)` in `world.js`.** It is a
   pure function of z, zero at every station (`STATION_Z0 = -16.5`, `STATION_GAP = 144`, i.e.
   `cz * 72 - 16.5` for even cz) and swinging `RAIL_SWING` (9 m) either side in between, cubed so the

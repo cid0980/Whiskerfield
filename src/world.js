@@ -759,6 +759,18 @@ export class World {
     }
     if (ridgeX) c.batch.cyl(b.x,b.h+rise+.04,b.z,.13,b.w+1.25,color,0,Math.PI/2);
     else c.batch.cyl(b.x,b.h+rise+.04,b.z,.13,b.d+1.25,color,Math.PI/2);
+    // The eaves are boarded and guttered. Without this the roof edge is the edge of a sheet: a
+    // fascia lip along each eave, and a half-round gutter hanging just outside it.
+    const eaveY = b.h - .08;
+    for (const sign of [-1, 1]) {
+      if (ridgeX) {
+        c.batch.add(boxGeo, b.x, eaveY, b.z + sign * d, 2 * w, .26, .14, '#ece3c9');
+        c.batch.add(cylinderGeo, b.x, eaveY - .17, b.z + sign * (d + .07), .09, 2 * w, .09, '#8d8470', 0, 0, Math.PI / 2);
+      } else {
+        c.batch.add(boxGeo, b.x + sign * w, eaveY, b.z, .14, .26, 2 * d, '#ece3c9');
+        c.batch.add(cylinderGeo, b.x + sign * (w + .07), eaveY - .17, b.z, .09, 2 * d, .09, '#8d8470', Math.PI / 2, 0, 0);
+      }
+    }
   }
 
   hip(c, b, rise, color) {

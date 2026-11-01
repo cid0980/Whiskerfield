@@ -370,7 +370,17 @@ export function makeInterior(W, c, x, z, r, id, kind) {
     W.cylinderSolid(c, x + w / 2 - 1.2, fy, z + d / 2 - 1.3, .5, .2, { climbable: false, kind: 'catbed' });
     person(c, kx + 1.1, kz + .4, -Math.PI / 2, 'barista', fy); person(c, kx + 1.3, kz - 1.4, Math.PI / 2, 'customer', fy);
     b.box(x, 3.3, front + .2, 4.6, .9, .14, '#8f5f4e'); b.box(x, 3.3, front + .28, 3.8, .5, .02, '#f1e8d2'); // café sign
-    b.box(x, 2.65, front + .6, w - 1, .08, 1.3, '#c9524a'); W.solid(c, x, 2.65, front + .6, w - 1, .08, 1.3, { climbable: false, kind: 'awning' });
+    // The shopfront awning: a striped canvas sloping out over the pavement, with a scalloped valance
+    // along its edge and two iron brackets holding it up. It used to be a flat red slab hanging here.
+    const awn = w - 2.4, acols = Math.max(3, Math.round(awn / .6));
+    for (let k = 0; k < acols; k++) {
+      const u = (k - (acols - 1) / 2) * (awn / acols);
+      b.add(GEO.box, x + u, 2.98, front + .78, awn / acols + .02, .07, 1.6, k % 2 ? '#f1e8d2' : '#c9524a', .21);
+      b.add(GEO.box, x + u, 2.62, front + 1.5, awn / acols + .02, .28, .06, k % 2 ? '#f1e8d2' : '#c9524a');
+    }
+    b.box(x, 3.12, front + .06, awn + .1, .1, .1, '#8d8470');
+    for (const s of [-1, 1]) b.box(x + s * (awn / 2 - .1), 2.72, front + .72, .06, .06, 1.45, '#4a4f4c');
+    W.solid(c, x, 2.9, front + .78, awn, .16, 1.6, { climbable: false, kind: 'awning' });
     for (let k = 0; k < 2; k++) { const tx = x + (k ? 3.2 : -3.2), tz = front + 1.6; b.cyl(tx, .72, tz, .5, .05, '#e3dcc6'); b.cyl(tx, .36, tz, .05, .7, '#4a4f4c'); W.cylinderSolid(c, tx, 0, tz, .5, .75, { climbable: false, kind: 'table' }); b.cyl(tx, 2.3, tz, .06, 2.6, '#f1e8d2'); b.add(GEO.cone, tx, 3.5, tz, 1.5, .5, 1.5, k ? '#c9524a' : '#e9c04b'); W.cylinderSolid(c, tx, 3.3, tz, 1.5, .3, { climbable: false, kind: 'parasol' }); }
   } else if (kind === 'shop') {
     // Grocer: aisles of shelves stacked with tins and fruit, a till, a freezer, baskets.

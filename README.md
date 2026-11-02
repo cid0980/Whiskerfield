@@ -87,6 +87,26 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.12** – **A run you can ask for with the stick, and thumb-sized controls.** On a phone the
+  stick had to be held forward for a walk, and tapping the run button to sprint meant taking your
+  thumb off the stick. Now **push the stick right up to the stop and the cat keeps running** — the
+  ring and the knob turn orange and the run button lights up with it — and it stays running until
+  you **steer left or right**, which lets the latch go, or lift your thumb, which lets go too so a
+  pocketed phone never runs off. Pushing it up again latches again; tapping the run button works
+  exactly as before and takes the latch over. The controls are **thumb-sized** to go with it: the
+  stick is 136 px (was 112), jump 86 (was 70), climb 70 (was 56), run 62 (was 50), and the rest
+  button 46 (was 38), with nothing overlapping on the tightest landscape phone. The stick also
+  gives full throttle at the stop now: it used to divide the deflection by the distance your thumb
+  had overshot by, so holding it past the stop quietly cost you a fifth of your speed.
+
+- **1.8.11** – **A quieter top bar, and the map where the name used to be.** The bar had grown to a
+  wordmark, a street card, a clock, five counters and five buttons, and on a phone that filled the
+  whole top of the screen. The wordmark and the street card are gone from the bar — the minimap
+  takes that corner, a third larger and on the left where you look first, with the street name as a
+  small caption underneath instead of a card of its own. The map button is gone too: the map is
+  always on screen now, and tapping it opens the full one (or press M). What is left up there is
+  the clock, the five counters and sound, wardrobe, fullscreen and settings.
+
 - **1.8.10** – **The cat is the 1.7.5 cat again.** The 1.8.8 rebuild of the body and the 1.8.9
   attempt to rematch it were not wanted, so both are reverted: `src/cat.js` is the 1.7.5 file,
   word for word, and `src/fur.js` — which only that rebuild used — is gone. Plump body, round eyes,

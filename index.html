@@ -53,24 +53,24 @@
     <div class="vignette" aria-hidden="true"></div>
 
     <header class="topbar hud">
-      <a class="brand" href="#" id="brand" aria-label="Whiskerfield settings"><span class="brand-mark"><svg class="icon"><use href="#i-cat"/></svg></span><strong>Whiskerfield</strong></a>
-      <div class="location-card play-hud" id="location-card"><svg class="icon"><use href="#i-leaf"/></svg><span id="district-name">Clover Quarter</span></div>
       <div class="location-card clock-card play-hud" id="clock-card" data-period="morning" title="Time of day"><span class="clock-dot"></span><span id="clock-label">9:12</span></div>
       <div class="top-actions">
         <span class="offline-status" id="offline-status" title="Offline status"><span class="status-dot"></span><span id="offline-label">Loading…</span></span>
         <div class="discoveries play-hud" aria-label="Discoveries" title="Rooftops · gardens · places · friends · shinies"><span><svg class="icon"><use href="#i-home"/></svg><b id="roof-count">0</b></span><span><svg class="icon"><use href="#i-leaf"/></svg><b id="garden-count">0</b></span><span><svg class="icon"><use href="#i-flag"/></svg><b id="place-count">0</b></span><span><svg class="icon"><use href="#i-heart"/></svg><b id="friend-count">0</b></span><span><svg class="icon"><use href="#i-star"/></svg><b id="shiny-count">0</b></span></div>
         <button class="icon-button" id="sound-button" aria-label="Turn sound off" title="Sound"><svg class="icon"><use href="#i-sound"/></svg></button>
         <button class="icon-button" id="hat-button" aria-label="Open wardrobe (H)" title="Wardrobe · H"><svg class="icon"><use href="#i-hat"/></svg></button>
-        <button class="icon-button" id="map-button" aria-label="Open neighborhood map (M)" title="Map · M"><svg class="icon"><use href="#i-map"/></svg></button>
         <button class="icon-button" id="fullscreen-button" aria-label="Fullscreen" title="Fullscreen · F"><svg class="icon"><use href="#i-expand"/></svg></button>
         <button class="icon-button" id="settings-button" aria-label="Open settings (Escape)" title="Settings · Esc"><svg class="icon"><use href="#i-settings"/></svg></button>
         <button class="install-button" id="install-button" hidden><svg class="icon"><use href="#i-download"/></svg><span>Install</span></button>
       </div>
     </header>
 
-    <canvas class="minimap hud play-hud" id="minimap" width="232" height="232" role="img"
-            aria-label="Neighbourhood map: the cat in the middle, facing the way it is heading. Tap to open the full map."
-            title="Tap for the full map · M"></canvas>
+    <div class="map-dock hud play-hud">
+      <canvas class="minimap" id="minimap" width="232" height="232" role="img"
+              aria-label="Neighbourhood map: the cat in the middle, facing the way it is heading. Tap to open the full map."
+              title="Tap for the full map · M"></canvas>
+      <div class="location-card" id="location-card"><svg class="icon"><use href="#i-leaf"/></svg><span id="district-name">Clover Quarter</span></div>
+    </div>
 
     <section class="welcome hud" id="welcome" aria-labelledby="welcome-title">
       <div class="welcome-kicker"><svg class="icon"><use href="#i-cat"/></svg> A small open world. You are the cat.</div>
@@ -90,9 +90,9 @@
     </div>
 
     <div class="touch-controls hud play-hud" id="touch-controls">
-      <div class="joystick" id="joystick" aria-label="Movement joystick"><div class="joystick-ring"></div><div class="joystick-knob" id="joystick-knob"><svg class="icon"><use href="#i-paw"/></svg></div></div>
+      <div class="joystick" id="joystick" aria-label="Movement joystick. Push it to the top to run; steer left or right to stop running."><div class="joystick-ring"></div><div class="joystick-knob" id="joystick-knob"><svg class="icon"><use href="#i-paw"/></svg></div></div>
       <div class="touch-actions">
-        <button id="touch-run" class="touch-action run" aria-label="Toggle running" aria-pressed="false"><svg class="icon"><use href="#i-run"/></svg></button>
+        <button id="touch-run" class="touch-action run" aria-label="Toggle running" aria-pressed="false" title="Run"><svg class="icon"><use href="#i-run"/></svg></button>
         <button id="touch-climb" class="touch-action climb" aria-label="Hold to climb"><svg class="icon"><use href="#i-climb"/></svg></button>
         <button id="touch-jump" class="touch-action jump" aria-label="Jump"><svg class="icon"><use href="#i-jump"/></svg></button>
       </div>
@@ -115,7 +115,7 @@
         <div><span class="help-icon"><svg class="icon"><use href="#i-climb"/></svg></span><h3>Climb</h3><p>Hold <kbd>E</kbd> at a wall, tree, lamp post or chimney. Stairs and low steps you just walk up.</p></div>
         <div><span class="help-icon"><svg class="icon"><use href="#i-heart"/></svg></span><h3>Everything else</h3><p>Walk up to people to say hello. Walk over a shiny to pick it up. <kbd>H</kbd> hats, <kbd>M</kbd> map, <kbd>N</kbd> nap, <kbd>F</kbd> fullscreen.</p></div>
       </div>
-      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>Phone: play in landscape. Left thumb joystick to move, right thumb for run, climb and jump; drag anywhere else to look. Gamepad: left stick move, right stick look, A jump, B or RB climb, triggers run.</span></div>
+      <div class="soft-note"><svg class="icon"><use href="#i-leaf"/></svg><span>Phone: play in landscape. Left thumb joystick to move — push it right to the top and the cat keeps running, steer left or right to drop back to a walk. Right thumb for run, climb and jump; drag anywhere else to look. Gamepad: left stick move, right stick look, A jump, B or RB climb, triggers run.</span></div>
       <button class="primary-button full-width" data-close>OK</button>
     </section>
 

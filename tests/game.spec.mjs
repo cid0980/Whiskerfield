@@ -205,7 +205,10 @@ test('landscape phone: fullscreen request, compact HUD without overlap, latching
   expect(calls).toContain('fullscreen');
   expect(calls).toContain('orientation');
   const boxes = {};
-  for (const id of ['joystick', 'touch-jump', 'touch-climb', 'touch-run', 'rest-button', 'brand', 'settings-button', 'map-button', 'fullscreen-button', 'sound-button', 'location-card']) boxes[id] = await page.locator('#' + id).boundingBox();
+  for (const id of ['joystick', 'touch-jump', 'touch-climb', 'touch-run', 'rest-button', 'settings-button', 'fullscreen-button', 'sound-button', 'minimap', 'clock-card']) boxes[id] = await page.locator('#' + id).boundingBox();
+  // Nothing that was removed from the bar may come back without a decision: no wordmark, no map button.
+  expect(await page.locator('#brand').count()).toBe(0);
+  expect(await page.locator('#map-button').count()).toBe(0);
   const ids = Object.keys(boxes);
   for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) expect(overlaps(boxes[ids[i]], boxes[ids[j]]), `${ids[i]} overlaps ${ids[j]}`).toBe(false);
   // Controls sit at the edges, leaving the middle of the world clear.
@@ -244,6 +247,51 @@ test('landscape phone: fullscreen request, compact HUD without overlap, latching
   await page.waitForFunction(() => window.__whiskerfield.getState().climbing);
   await page.mouse.up();
   await page.screenshot({ path: '../screenshots/test-mobile-landscape.png' });
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test('pushing the joystick to the top latches a run, and steering drops back to a walk', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  const errors = await enter(page);
+  // Thumb-sized, not pinhead-sized: the stick and the three buttons.
+  const joy = await page.locator('#joystick').boundingBox();
+  expect(joy.width).toBeGreaterThanOrEqual(128);
+  for (const id of ['touch-jump', 'touch-climb', 'touch-run']) expect((await page.locator('#' + id).boundingBox()).width, id + ' is too small to hit').toBeGreaterThanOrEqual(60);
+
+  const cx = joy.x + joy.width / 2, cy = joy.y + joy.height / 2;
+  // Drag the stick straight up, past the top.
+  await page.mouse.move(cx, cy); await page.mouse.down();
+  await page.mouse.move(cx, cy - joy.height * .46);
+  await expect(page.locator('#touch-run')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#joystick')).toHaveClass(/sprint/);
+
+  // And the cat really runs, on the strength of the stick alone: an empty lane, the camera squared
+  // up with it, then a second and a half of holding the knob at the top.
+  const run = await page.evaluate(() => {
+    const g = window.__whiskerfield; g.setCamera(0);
+    const lane = (() => { for (let x = -60; x <= 60; x += 2) for (let z0 = -60; z0 <= 60; z0 += 2) { let ok = true; for (let z = z0; z > z0 - 46 && ok; z -= 1) for (const s of g.physics.query(x, z, 1.4)) if (s.maxY > .15 && s.minY < 1.2) ok = false; if (ok) return [x, z0]; } return [0, 60]; })();
+    g.teleport(lane[0], 0, lane[1]);
+    for (let i = 0; i < 160; i++) g.step(1 / 60);
+    return { speed: g.player.speed, sprint: g.input.sprint, y: g.input.y };
+  });
+  expect(run.sprint, 'the stick alone did not put the cat into a sprint').toBe(true);
+  expect(run.y).toBeLessThan(-.7);
+  expect(run.speed, 'sprint speed was ' + run.speed).toBeGreaterThan(7.7);
+
+  // Steer left or right and the latch lets go.
+  await page.mouse.move(cx + joy.width * .46, cy - joy.height * .16);
+  await expect(page.locator('#touch-run')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#joystick')).not.toHaveClass(/sprint/);
+
+  // Push it up again and it latches again; lift the thumb and it lets go, so it never runs away.
+  await page.mouse.move(cx, cy - joy.height * .46);
+  await expect(page.locator('#touch-run')).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.up();
+  await expect(page.locator('#touch-run')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#joystick')).not.toHaveClass(/sprint/);
+
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -990,7 +1038,7 @@ test('seated people sit on their seat, and turn to watch the cat go by', async (
       const before = s.heading;
       // A fixed spot, so the test cannot be unlucky about where it stands.
       g.teleport(s.x + Math.sin(2.1) * 1.4, s.y + .2, s.z + Math.cos(2.1) * 1.4);
-      for (let i = 0; i < 90; i++) g.step(1 / 60);
+      for (let i = 0; i < 160; i++) g.step(1 / 60);
       out.seatedTurn = { turned: +Math.abs(Math.atan2(Math.sin(s.heading - before), Math.cos(s.heading - before))).toFixed(2), stillSeated: s.sitting };
     }
     // ---- and a walker greets the cat from a step away
@@ -1071,7 +1119,8 @@ test('the minimap: a square of the town with the cat in it, pointing where it is
     const box = map.getBoundingClientRect();
     out.box = [Math.round(box.width), Math.round(box.height)];
     out.square = Math.abs(box.width - box.height) <= 1;
-    out.onRight = box.left > innerWidth * .6;
+    out.onLeft = box.left < innerWidth * .4;
+    out.bigEnough = box.width >= 120;
     out.opaque = +getComputedStyle(map).opacity;
     out.painted = ctx.getImageData(0, 0, map.width, map.height).data.some((v, i) => i % 4 === 3 && v > 8);
     const before = sum(shot());
@@ -1095,7 +1144,8 @@ test('the minimap: a square of the town with the cat in it, pointing where it is
   });
   expect(errors).toEqual([]);
   expect(r.square).toBe(true);
-  expect(r.onRight).toBe(true);
+  expect(r.onLeft).toBe(true);
+  expect(r.bigEnough).toBe(true);
   expect(r.opaque).toBe(1);
   expect(r.painted).toBe(true);
   expect(r.scrolled).toBe(true);

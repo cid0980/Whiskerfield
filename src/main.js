@@ -72,7 +72,7 @@ function orbit(yaw, pitch) {
 const orbitDrag = (dx, dy) => orbit(dx * .0034 * sensitivity(), dy * .0023 * sensitivity());
 const orbitStick = (rx, ry, dt) => orbit(rx * 2.6 * dt * sensitivity(), ry * 1.8 * dt * sensitivity());
 let time = 0, lastTime = 0, saveTimer = 0, hudTimer = 0, purrTimer = 0, toastTimer = 0, playTime = 0, slowTime = 0, frameAvg = 16, tooFarSaid = false;
-let jumpQueued = false, jumpHeld = false, touchClimb = false, touchRun = false, joyX = 0, joyY = 0, wallHint = null, wallPush = 0, scramble = false;
+let jumpQueued = false, jumpHeld = false, touchClimb = false, touchRun = false, joyX = 0, joyY = 0, wallHint = null, wallPush = 0, scramble = false, stickRun = false;
 let gamepadMoveX = 0, gamepadMoveY = 0, gamepadRun = false, gamepadClimb = false, prevPadButtons = [];
 let currentDistrict = '', mapCenter = null, mapDrag = null, portraitOk = sessionStorage.getItem('whiskerfield.portrait') === '1';
 const keys = new Set(), pointers = new Map(), cameraTarget = new THREE.Vector3(), cameraDesired = new THREE.Vector3(), tempVec = new THREE.Vector3(), bubbleVec = new THREE.Vector3();
@@ -113,7 +113,7 @@ function syncSettings() {
   if (leafMesh) leafMesh.count = settings.reducedMotion ? 12 : 48;
 }
 function clearInput() {
-  keys.clear(); jumpQueued = false; jumpHeld = false; touchClimb = false; joyX = joyY = 0; gamepadMoveX = gamepadMoveY = 0; gamepadRun = false; gamepadClimb = false; player.jumpBuffer = 0;
+  keys.clear(); jumpQueued = false; jumpHeld = false; touchClimb = false; joyX = joyY = 0; stickRun = false; gamepadMoveX = gamepadMoveY = 0; gamepadRun = false; gamepadClimb = false; player.jumpBuffer = 0;
   $('joystick-knob').style.transform = 'translate(0px,0px)'; $('joystick').classList.remove('engaged');
   document.querySelectorAll('.touch-action.pressed').forEach(el => el.classList.remove('pressed'));
 }
@@ -344,10 +344,8 @@ function createUI() {
   $('welcome-help').addEventListener('click', () => openModal('help-modal'));
   $('settings-help').addEventListener('click', () => openModal('help-modal'));
   $('settings-button').addEventListener('click', () => openModal('settings-modal'));
-  $('map-button').addEventListener('click', () => openModal('map-modal'));
   $('minimap').addEventListener('click', () => { mapCenter = { x: player.pos.x, z: player.pos.z }; openModal('map-modal'); });
   $('hat-button').addEventListener('click', () => openModal('wardrobe-modal'));
-  $('brand').addEventListener('click', e => { e.preventDefault(); openModal('settings-modal'); });
   $('rest-button').addEventListener('click', toggleRest);
   $('fullscreen-button').addEventListener('click', async () => { if (platform.isFullscreen()) await platform.exitFullscreen(); else { await platform.enterFullscreen(); if (mobile) await platform.lockLandscape(); } syncOrientation(); });
   $('rotate-continue').addEventListener('click', () => { portraitOk = true; sessionStorage.setItem('whiskerfield.portrait', '1'); syncOrientation(); });
@@ -423,16 +421,37 @@ function createUI() {
   canvas.addEventListener('wheel', e => { e.preventDefault(); if (!modal) { cameraDistanceTarget = clamp(cameraDistanceTarget + e.deltaY * .006, DIST_MIN, DIST_MAX); } }, { passive: false });
   // Touch joystick, latching sprint, hold-to-climb, and jump.
   const joy = $('joystick'); let joyPointer = null;
-  const moveJoy = e => { const rect = joy.getBoundingClientRect(), max = rect.width * .36; let dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2; const d = Math.hypot(dx, dy); if (d > max) { dx *= max / d; dy *= max / d; } const n = Math.min(1, d / max), dead = .1; const shaped = n < dead ? 0 : (n - dead) / (1 - dead); joyX = d ? dx / d * shaped : 0; joyY = d ? dy / d * shaped : 0; $('joystick-knob').style.transform = `translate(${dx}px,${dy}px)`; joy.classList.toggle('engaged', n > dead); };
+  // Run latch. Drag the stick up to the stop and the cat keeps running without holding the run
+  // button; steer it left or right and the latch lets go and the cat drops to a walk. Lifting the
+  // thumb lets go too, so a put-down phone never runs off on its own.
+  const latchRun = (n, dx, dy) => {
+    const h = Math.hypot(dx, dy) || 1, nx = dx / h, ny = dy / h;
+    const up = n > .9 && ny < -.9 && Math.abs(nx) < .32;      // the knob is at the stop, pointing up
+    if (up && !stickRun) { stickRun = true; setRun(true); }
+    else if (stickRun && Math.abs(nx) > .7) { stickRun = false; setRun(false); }  // steered aside
+    joy.classList.toggle('sprint', stickRun);
+  };
+  const moveJoy = e => {
+    const rect = joy.getBoundingClientRect(), max = rect.width * .36;
+    let dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2;
+    const raw = Math.hypot(dx, dy); if (raw > max) { dx *= max / raw; dy *= max / raw; }
+    // The knob measures from where it is, not from where the thumb went: dragging past the stop is
+    // full deflection, not 80% of it (it used to divide by the distance the thumb had overshot by).
+    const d = Math.hypot(dx, dy), n = Math.min(1, d / max), dead = .1, shaped = n < dead ? 0 : (n - dead) / (1 - dead);
+    joyX = d ? dx / d * shaped : 0; joyY = d ? dy / d * shaped : 0;
+    $('joystick-knob').style.transform = `translate(${dx}px,${dy}px)`; joy.classList.toggle('engaged', n > dead);
+    latchRun(n, dx, dy);
+  };
   joy.addEventListener('pointerdown', e => { e.preventDefault(); joyPointer = e.pointerId; joy.setPointerCapture(e.pointerId); moveJoy(e); });
   joy.addEventListener('pointermove', e => { if (e.pointerId === joyPointer) moveJoy(e); });
-  const releaseJoy = e => { if (e.pointerId !== joyPointer) return; joyPointer = null; joyX = joyY = 0; $('joystick-knob').style.transform = 'translate(0px,0px)'; joy.classList.remove('engaged'); };
+  const releaseJoy = e => { if (e.pointerId !== joyPointer) return; joyPointer = null; joyX = joyY = 0; $('joystick-knob').style.transform = 'translate(0px,0px)'; joy.classList.remove('engaged');
+    if (stickRun) { stickRun = false; setRun(false); } joy.classList.remove('sprint'); };
   joy.addEventListener('pointerup', releaseJoy); joy.addEventListener('pointercancel', releaseJoy); joy.addEventListener('lostpointercapture', releaseJoy);
   const hold = (id, on, off) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); el.setPointerCapture(e.pointerId); el.classList.add('pressed'); on(); }); for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(ev, () => { el.classList.remove('pressed'); off(); }); };
   hold('touch-jump', () => { jumpQueued = true; jumpHeld = true; }, () => { jumpHeld = false; });
   hold('touch-climb', () => { touchClimb = true; }, () => { touchClimb = false; });
   const setRun = v => { touchRun = v; $('touch-run').classList.toggle('active', touchRun); $('touch-run').setAttribute('aria-pressed', String(touchRun)); };
-  $('touch-run').addEventListener('pointerdown', e => { e.preventDefault(); setRun(!touchRun); });
+  $('touch-run').addEventListener('pointerdown', e => { e.preventDefault(); stickRun = false; joy.classList.remove('sprint'); setRun(!touchRun); });
   const map = $('map-canvas');
   map.addEventListener('pointerdown', e => { map.setPointerCapture(e.pointerId); mapDrag = { x: e.clientX, y: e.clientY }; });
   map.addEventListener('pointermove', e => { if (!mapDrag) return; const scale = MAP_SCALE * (map.clientWidth / 960); mapCenter.x -= (e.clientX - mapDrag.x) / scale; mapCenter.z -= (e.clientY - mapDrag.y) / scale; mapDrag = { x: e.clientX, y: e.clientY }; drawMap(); });

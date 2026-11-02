@@ -87,6 +87,36 @@ Each chunk is one merged mesh with vertex colours; everything placed in it gets 
 
 ## Changelog
 
+- **1.8.10** – **The cat is the 1.7.5 cat again.** The 1.8.8 rebuild of the body and the 1.8.9
+  attempt to rematch it were not wanted, so both are reverted: `src/cat.js` is the 1.7.5 file,
+  word for word, and `src/fur.js` — which only that rebuild used — is gone. Plump body, round eyes,
+  big pale muzzle, big ears, chunky cream paws, beaded upright tail. Nothing else moved: the town,
+  the train, the sea, the wardrobe, the physics and the tests are all still the 1.8.x ones, and the
+  wardrobe mounts and the `update()` contract were identical in 1.7.5, so hats, collars, sitting,
+  swimming and resting all carry on as they were.
+
+- **1.8.9** – *(Reverted in 1.8.10: the model below is not the one shipped.)* The cat got its character back, and the four faults behind it are gone. The rebuild
+  in 1.8.1 had traded a chunky, friendly cat for a lanky one: a small ball head with slit eyes sunk
+  into the shoulders, pipe-cleaner legs, a long thin barrel of a body, and two pale discs stuck on
+  the shoulder and the rump where the open ends of the body tube had been plugged. So the
+  **volumes are the old ones again** — a deep barrel of a body the legs tuck under (belly at .39,
+  back at 1.03), a short thick neck carrying the head level with its own back, a broad wedge of a
+  head with full cheeks, a pale muzzle with cheek pads, **big round eyes with a catchlight** and
+  **big ears**; rounded upper arms, forearms and chunky pale paws in place of tapering tubes; and a
+  **beaded tail**, thick at the root and pale at the tip. The body is one watertight surface:
+  `taperTube` can now dome its own ends, so the chest and the rump simply round off — the plugs,
+  and the cream discs the coat's belly patch painted on them, are gone for good. The coat's eleven
+  evenly spaced bands, which wrapped the torso like a ribcage, are six or seven bands on a wider
+  uneven pitch with one in five missing, each with its own weight, still fading out before the
+  belly. Standing is a pose now rather than four straight posts: the hind pair folds at the hock
+  (thigh forward .20, shin back .40) and the front pair is bent just enough to see (.05/.08),
+  faded out for sitting, stretching and lying down; a bent leg is a shorter one, so the body drops
+  by the shortfall — measured off the paws at build time rather than guessed — and they still
+  stand on y = 0. Two comments in `cat.js` had swallowed the rest of their own line, which is why
+  the sit, landing and swim drops and the tail's climbing and leaning terms had never run at all;
+  switched on, the sit drop (.14) and the landing drop (.09) buried the front paws two centimetres
+  into the ground, and both are tuned to what the paws allow (.066 and .02).
+
 - **1.8.8** – The cat itself, close up. Three real faults, found by standing the model on a plain
   backdrop and walking round it: the body was a tube with no end caps, so **you could see straight
   through the cat** at the chest and the rump (the pale crescent that looked like a floating ring);
